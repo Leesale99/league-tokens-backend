@@ -39,8 +39,8 @@ Created → RegistrationOpen → InProgress → FinalAutoBurn → FinalStandings
 
 - `Created`: season config loaded (N teams, R rounds, K, constants table). No rounds active.
 - `RegistrationOpen`: players may register. Rounds not yet active.
-- `InProgress`: rounds iterate per §2.2. Registration may stay open alongside (late joiners).
-- `FinalAutoBurn`: fires once, when the **last match of round R resolves** — §2.4. Transitions automatically.
+- `InProgress`: rounds iterate per Spec 2.2. Registration may stay open alongside (late joiners).
+- `FinalAutoBurn`: fires once, when the **last match of round R resolves** — Spec 2.4. Transitions automatically.
 - `FinalStandings`: championships frozen; standings read-only. MVP tiebreaks: TB desc, then oldest account (player) / team id (team).
 - `Closed`: terminal. Each season is **isolated** at `[Launch]`; no cross-season carryover. Rollover is `[Post-launch]`.
 
@@ -63,11 +63,11 @@ Scheduled → InPlay → Resolved
 
 - `Scheduled`: known tipoff, settled odds supplied by feed (decimal, verbatim).
 - `InPlay`: tipoff reached. No engine effect vs `Scheduled` other than cutoff already passed; the engine still treats result as pending.
-- `Resolved`: result commit (§3.2). Append-only at `[Launch]` (postponed/voided/corrected matches are a `[Post-launch]` problem — see `game_design.md` Open Questions).
+- `Resolved`: result commit (Spec 3.2). Append-only at `[Launch]` (postponed/voided/corrected matches are a `[Post-launch]` problem — see `game_design.md` Open Questions).
 
 ### 2.4 Final auto-burn (endgame)
 
-Triggers when the **last match of round R** reaches `Resolved`. Engine sweeps **every** `Ride` in state `WonPending` across **all players, all teams** and burns each (§4.3 burn). No ride survives past season end. Then `Season → FinalStandings`.
+Triggers when the **last match of round R** reaches `Resolved`. Engine sweeps **every** `Ride` in state `WonPending` across **all players, all teams** and burns each (Spec 4.3 burn). No ride survives past season end. Then `Season → FinalStandings`.
 
 ---
 
@@ -76,8 +76,8 @@ Triggers when the **last match of round R** reaches `Resolved`. Engine sweeps **
 | Op | Trigger | Effect |
 |---|---|---|
 | `ResolveMatch(match)` | result payload arrives | commit result (append-only, idempotent on match id), settle all rides locked into that match, accrue acc on wins / destroy + forfeit on losses, update `Team.base`, recompute standings. |
-| `AutoBurnDeadline(round)` | the round's cutoff timestamp fires | for every `WonPending` ride whose action window closes with this round's cutoff, burn it (§4.3). |
-| `FinalAutoBurn` | last match of round R resolves | burn all `WonPending` rides league-wide (§2.4). |
+| `AutoBurnDeadline(round)` | the round's cutoff timestamp fires | for every `WonPending` ride whose action window closes with this round's cutoff, burn it (Spec 4.3). |
+| `FinalAutoBurn` | last match of round R resolves | burn all `WonPending` rides league-wide (Spec 2.4). |
 | `UpdateBase(team, win)` | inside `ResolveMatch` per affected team | `base ← (base × 1.05).Round(6)` if win else `(base × 0.95).Round(6)`; clamp to `base > 0` (strictly positive; never reaches 0). No upper cap. |
 | `Register(player, team)` | player registration request | grant 50 currency (mint from `CommonPool`), lock `favourite_team = team` for the season. **No token auto-buy at `[Launch]`** — first token acquisition is a normal reserve buy in round 1. |
 
@@ -85,7 +85,7 @@ Triggers when the **last match of round R** reaches `Resolved`. Engine sweeps **
 
 For each team T in the match, `UpdateBase(T, did_T_win)` runs once. Then for every ride locked into this match:
 
-- If the ride's team **won**: `acc += acc_delta` (§5.1), `Ride.state ← WonPending`. The player's action window is the **next round's `ActionPhase`** (cutoff of round `current+1`). No further effect until the player acts or `AutoBurnDeadline` fires.
+- If the ride's team **won**: `acc += acc_delta` (Spec 5.1), `Ride.state ← WonPending`. The player's action window is the **next round's `ActionPhase`** (cutoff of round `current+1`). No further effect until the player acts or `AutoBurnDeadline` fires.
 - If the ride's team **lost**: destroy `(tokens_locked × X).Round(6)` tokens (sink), return `tokens_locked − destroyed` to that player's wallet for that team, **forfeit all `acc`**, `Ride.state ← Lost` (terminal).
 - A ride's `acc_delta` uses the match's **settled decimal odds**, verbatim from the feed.
 
@@ -97,11 +97,11 @@ For each team T in the match, `UpdateBase(T, did_T_win)` runs once. Then for eve
 
 ## 4. Player Operations
 
-All player ops validate §6 invariants first and reject with a typed error otherwise.
+All player ops validate Spec 6 invariants first and reject with a typed error otherwise.
 
 | Op | Valid phase | Pre-state | Effect |
 |---|---|---|---|
-| `Register` | `RegistrationOpen` (or `InProgress` if late-join allowed) | new player | per §3 system op `Register`. One-shot per player per season; favourite immutable. |
+| `Register` | `RegistrationOpen` (or `InProgress` if late-join allowed) | new player | per Spec 3 system op `Register`. One-shot per player per season; favourite immutable. |
 | `BuyFromReserve(team, amount)` | `ActionPhase` or `MatchPhase` (buy is always allowed `[Launch]`) | `wallet.currency ≥ (base × amount).Round(6)`, `reserve(team) ≥ amount` | `currency -= (base × amount).Round(6)` → `CommonPool`; `reserve(team) -= amount`; `wallet.tokens[team] += amount`. Unlimited up to reserve remaining. |
 | `Lock(team, tokens)` | `ActionPhase` (this round only) | `wallet.tokens[team] ≥ tokens`, team has a `Scheduled` match this round | freeze `base_at_lock = Team.base` (snapshot, ride-lifetime); create new `Ride` with `streak = 0`, `acc = 0`, `tokens_locked = tokens`; `wallet.tokens[team] -= tokens` (tokens become ride-held); `Ride.match = team's match this round`; `Ride.state = Locked`. **Multiple concurrent rides per team allowed** (each independent, own streak). |
 | `Ride(ride_id)` | `ActionPhase` | `Ride.state = WonPending` | continue the chain: set `Ride.match = team's match this round` (the team's only match this round), `streak += 1`, `Ride.state = Locked`. `base_at_lock` and `tokens_locked` **unchanged**. |
@@ -125,7 +125,7 @@ acc_delta = (tokens_locked × (odds_settled − 1) × (1 + streak × s)).Round(6
 acc       += acc_delta           // on each win, at ResolveMatch time
 streak    += 1                   // on subsequent Ride op (next-round continuation)
 ```
-`Round(6)` is round-half-up to 6 decimals (see §6.12 — same rounding applies to every persisted arithmetic step).
+`Round(6)` is round-half-up to 6 decimals (see Spec 6.12 — same rounding applies to every persisted arithmetic step).
 
 - `tokens_locked`: ride-held tokens (constant across the chain; loss is a single terminal event, no mid-chain compounding).
 - `odds_settled`: settled decimal odds of the winning match, verbatim from result feed.
@@ -141,7 +141,7 @@ returned  = tokens_locked − destroyed
 // acc forfeited to 0; Ride.state ← Lost (terminal)
 ```
 
-`Round(6)` is round-half-up to 6 decimals (§6.12) — this replaces the previous `floor`
+`Round(6)` is round-half-up to 6 decimals (Spec 6.12) — this replaces the previous `floor`
 rule. Only ever one loss event per ride (chain ends).
 
 ### 5.3 Burn (player or auto)
@@ -150,7 +150,7 @@ rule. Only ever one loss event per ride (chain ends).
 tb_credit   = tokens_locked + acc
 player_TB  += tb_credit
 team_basket += tb_credit                    // Team Championship
-wallet.currency += (base_at_lock × tokens_locked).Round(6)   // paid by CommonPool (mints on deficit — mechanical invariant, never +EV); half-up to 6 dp (§6.12)
+wallet.currency += (base_at_lock × tokens_locked).Round(6)   // paid by CommonPool (mints on deficit — mechanical invariant, never +EV); half-up to 6 dp (Spec 6.12)
 // tokens_locked destroyed (sink)
 ```
 
@@ -162,13 +162,13 @@ base ← (base × 0.95).Round(6)  if team lost last match
 // applied once per team per match, inside ResolveMatch
 // invariant: base > 0 (strictly positive; multipliers clamped to a tiny epsilon at the boundary)
 // existing rides are immune: base_at_lock already frozen
-// .Round(6): half-up to 6 decimals, keeps base at scale 6 across the whole season (§6.12)
+// .Round(6): half-up to 6 decimals, keeps base at scale 6 across the whole season (Spec 6.12)
 ```
 
 ### 5.5 Reserve buy (only token faucet at `[Launch]`)
 
 ```
-price       = (Team.base × amount).Round(6)   // current base, not frozen; half-up to 6 dp (§6.12)
+price       = (Team.base × amount).Round(6)   // current base, not frozen; half-up to 6 dp (Spec 6.12)
 wallet.currency  -= price    → CommonPool
 reserve(team)    -= amount
 wallet.tokens[team] += amount
@@ -177,7 +177,7 @@ wallet.tokens[team] += amount
 
 ### 5.6 Currency loop
 
-Closed. Sources of currency: registration grants (one-time). Sinks: reserve buys (→ `CommonPool`) which then pay burns. Burns pay `base_at_lock × tokens` into currency; token destruction (loss, burn) destroys tokens **without** destroying currency. No other mint except the mechanical `CommonPool` deficit safety (§6 invariant).
+Closed. Sources of currency: registration grants (one-time). Sinks: reserve buys (→ `CommonPool`) which then pay burns. Burns pay `base_at_lock × tokens` into currency; token destruction (loss, burn) destroys tokens **without** destroying currency. No other mint except the mechanical `CommonPool` deficit safety (Spec 6 invariant).
 
 ---
 
@@ -247,9 +247,9 @@ Closed. Sources of currency: registration grants (one-time). Sinks: reserve buys
 | `epsilon` | base lower bound | 1e-6 | `base > 0` clamp |
 | `cut_off` | action-phase lead time | 1h | round cutoff |
 | precision | token decimals | 6 | fixed-point unit |
-| rounding | persisted-arithmetic rounding mode | half-up | applies at every write boundary (§6.12) |
+| rounding | persisted-arithmetic rounding mode | half-up | applies at every write boundary (Spec 6.12) |
 
-Each is a per-season engine config constant. `X`, `s`, `W`, `L`, `K`, `G` and `rounding` are **sim outputs**, not design inputs — see `game_design.md` §10 for sim verification obligations. Sell cap (2× base) and taker fee (1%) are `[Market]` addendum constants, not engine-core.
+Each is a per-season engine config constant. `X`, `s`, `W`, `L`, `K`, `G` and `rounding` are **sim outputs**, not design inputs — see `game_design.md` Spec 10 for sim verification obligations. Sell cap (2× base) and taker fee (1%) are `[Market]` addendum constants, not engine-core.
 
 ---
 
