@@ -148,7 +148,7 @@ Playoff mechanics (cascading burn war, eliminated-team freezes, wallet-burn dyna
 ## 9. Players & Anti-Abuse
 
 - **Registration:** choose a **favourite team — locked for the season**; its logo follows you everywhere.
-- **Grant:** **50 Currency** (fixed). 5 favourite-team tokens are auto-purchased at base 1.0 on registration (cost 5 from the grant); player starts with **45 Currency + 5 favourite-team tokens**. The lock decision starts on round 1.
+- **Grant:** **50 Currency** (fixed).
 - **Late joiners:** accepted limitation — priced out of hot teams, steered to cheap underdogs (which the game wants anyway). Rookie filter gives them their own race. Median-scaled grant is the documented lever if churn data proves the problem.
 - **Session hooks `[Post-Launch]`:** three notifications — ride resolved ("Won vs Madrid — ride or burn?"), deadline reminder, favourite-team result. Live match centre.
 
@@ -229,3 +229,9 @@ Deferred design problems requiring dedicated sessions. MVP ships without resolvi
 ### Alternative Registration Model
 
 - **10 Currency + 5 tokens/team universal distribution + market-as-MVP** — shifts the game from fan-bettor to portfolio-manager identity. Different MVP scope (market required at launch). Deferred pending player-retention data from the fan-bettor MVP.
+
+### Match Reliability (Postponed / Cancelled / Voided / Corrected Results)
+
+- MVP assumes **no match is ever postponed, cancelled, voided, or corrected after commit**. The schedule/result feed is authoritative-once.
+- Edge cases (postponement → ride unlock vs loss? voided result correction? makeup-fixtures and round rebalancing?) are **deferred** and require a dedicated session before any season relying on feeds with known reliability gaps.
+- Engine spec models result commit as append-only; a Post-launch admin reconciliation op will handle the rare corrected-result case.
