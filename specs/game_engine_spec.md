@@ -5,7 +5,7 @@ Authoritative definition of the **game engine**: its state machines, lifecycles,
 > **Scope.** Engine-only. Excludes market (deferred to `[Market]` addendum), API/data models, infrastructure, frontend, auth/identity, persistence choice.
 > **Source of truth.** Where this doc and `game_design.md` agree, they agree. Where the design doc is silent, this spec decides.
 > **Phase tags.** `[Launch]` MVP · `[Market]` end-of-MVP · `[Post-launch]` deferred.
-> **Conventions.** Token sums are fixed-point, **6 decimals** (unit `1e-6`). Rounding happens **only** at loss-destruction floor; all other arithmetic is exact at this precision.
+> **Conventions.** Token sums are fixed-point, **6 decimals** (unit `1e-6`). All persisted arithmetic is rounded to **6 decimals, round-half-up** (default decimal rounding) at **every write boundary**: `UpdateBase`, `AccDelta` accrual, burn payout, reserve-buy price, and loss-destruction. There is no special-case `floor` anywhere; the previous "floor only at loss-destruction" rule is superseded. Persistence enforces the 6-decimal scale a second time at the column level (`NUMERIC(…,6)`).
 
 ---
 
@@ -78,7 +78,7 @@ Triggers when the **last match of round R** reaches `Resolved`. Engine sweeps **
 | `ResolveMatch(match)` | result payload arrives | commit result (append-only, idempotent on match id), settle all rides locked into that match, accrue acc on wins / destroy + forfeit on losses, update `Team.base`, recompute standings. |
 | `AutoBurnDeadline(round)` | the round's cutoff timestamp fires | for every `WonPending` ride whose action window closes with this round's cutoff, burn it (§4.3). |
 | `FinalAutoBurn` | last match of round R resolves | burn all `WonPending` rides league-wide (§2.4). |
-| `UpdateBase(team, win)` | inside `ResolveMatch` per affected team | `base ← base × 1.05` if win else `base × 0.95`; clamp to `base > 0` (strictly positive; never reaches 0). No upper cap. |
+| `UpdateBase(team, win)` | inside `ResolveMatch` per affected team | `base ← (base × 1.05).Round(6)` if win else `(base × 0.95).Round(6)`; clamp to `base > 0` (strictly positive; never reaches 0). No upper cap. |
 | `Register(player, team)` | player registration request | grant 50 currency (mint from `CommonPool`), lock `favourite_team = team` for the season. **No token auto-buy at `[Launch]`** — first token acquisition is a normal reserve buy in round 1. |
 
 ### 3.1 Resolution mechanics (`ResolveMatch`)
@@ -86,7 +86,7 @@ Triggers when the **last match of round R** reaches `Resolved`. Engine sweeps **
 For each team T in the match, `UpdateBase(T, did_T_win)` runs once. Then for every ride locked into this match:
 
 - If the ride's team **won**: `acc += acc_delta` (§5.1), `Ride.state ← WonPending`. The player's action window is the **next round's `ActionPhase`** (cutoff of round `current+1`). No further effect until the player acts or `AutoBurnDeadline` fires.
-- If the ride's team **lost**: destroy `floor(tokens_locked × X)` tokens (sink), return `tokens_locked − destroyed` to that player's wallet for that team, **forfeit all `acc`**, `Ride.state ← Lost` (terminal).
+- If the ride's team **lost**: destroy `(tokens_locked × X).Round(6)` tokens (sink), return `tokens_locked − destroyed` to that player's wallet for that team, **forfeit all `acc`**, `Ride.state ← Lost` (terminal).
 - A ride's `acc_delta` uses the match's **settled decimal odds**, verbatim from the feed.
 
 ### 3.2 Idempotency
@@ -102,10 +102,10 @@ All player ops validate §6 invariants first and reject with a typed error other
 | Op | Valid phase | Pre-state | Effect |
 |---|---|---|---|
 | `Register` | `RegistrationOpen` (or `InProgress` if late-join allowed) | new player | per §3 system op `Register`. One-shot per player per season; favourite immutable. |
-| `BuyFromReserve(team, amount)` | `ActionPhase` or `MatchPhase` (buy is always allowed `[Launch]`) | `wallet.currency ≥ base × amount`, `reserve(team) ≥ amount` | `currency -= base × amount` → `CommonPool`; `reserve(team) -= amount`; `wallet.tokens[team] += amount`. Unlimited up to reserve remaining. |
+| `BuyFromReserve(team, amount)` | `ActionPhase` or `MatchPhase` (buy is always allowed `[Launch]`) | `wallet.currency ≥ (base × amount).Round(6)`, `reserve(team) ≥ amount` | `currency -= (base × amount).Round(6)` → `CommonPool`; `reserve(team) -= amount`; `wallet.tokens[team] += amount`. Unlimited up to reserve remaining. |
 | `Lock(team, tokens)` | `ActionPhase` (this round only) | `wallet.tokens[team] ≥ tokens`, team has a `Scheduled` match this round | freeze `base_at_lock = Team.base` (snapshot, ride-lifetime); create new `Ride` with `streak = 0`, `acc = 0`, `tokens_locked = tokens`; `wallet.tokens[team] -= tokens` (tokens become ride-held); `Ride.match = team's match this round`; `Ride.state = Locked`. **Multiple concurrent rides per team allowed** (each independent, own streak). |
 | `Ride(ride_id)` | `ActionPhase` | `Ride.state = WonPending` | continue the chain: set `Ride.match = team's match this round` (the team's only match this round), `streak += 1`, `Ride.state = Locked`. `base_at_lock` and `tokens_locked` **unchanged**. |
-| `Burn(ride_id)` | `ActionPhase` | `Ride.state = WonPending` | `tb_credit = tokens_locked + acc`. Player TB += tb_credit; team basket += tb_credit; `CommonPool` pays currency `base_at_lock × tokens_locked` → `wallet.currency`; tokens destroyed (sink); `Ride.state = Burned` (terminal). |
+| `Burn(ride_id)` | `ActionPhase` | `Ride.state = WonPending` | `tb_credit = tokens_locked + acc`. Player TB += tb_credit; team basket += tb_credit; `CommonPool` pays currency `(base_at_lock × tokens_locked).Round(6)` → `wallet.currency`; tokens destroyed (sink); `Ride.state = Burned` (terminal). |
 | `Unlock(ride_id)` | `ActionPhase` | `Ride.state = WonPending` | tokens return to `wallet.tokens[team]`; `acc` forfeited (drops, not credited anywhere); `Ride.state = Unlocked` (terminal). Near-redundant `[Launch]`; earns market value `[Market]`. |
 | *(no action by cutoff)* | — | `Ride.state = WonPending` | system fires `AutoBurnDeadline` → behaves as `Burn`. |
 
@@ -121,10 +121,11 @@ All player ops validate §6 invariants first and reject with a typed error other
 ### 5.1 Per-win acc accrual
 
 ```
-acc_delta = tokens_locked × (odds_settled − 1) × (1 + streak × s)
+acc_delta = (tokens_locked × (odds_settled − 1) × (1 + streak × s)).Round(6)
 acc       += acc_delta           // on each win, at ResolveMatch time
 streak    += 1                   // on subsequent Ride op (next-round continuation)
 ```
+`Round(6)` is round-half-up to 6 decimals (see §6.12 — same rounding applies to every persisted arithmetic step).
 
 - `tokens_locked`: ride-held tokens (constant across the chain; loss is a single terminal event, no mid-chain compounding).
 - `odds_settled`: settled decimal odds of the winning match, verbatim from result feed.
@@ -134,13 +135,14 @@ streak    += 1                   // on subsequent Ride op (next-round continuati
 ### 5.2 Loss
 
 ```
-destroyed  = floor(tokens_locked × X)        // X = loss burn %, constants table, default 0.25
-returned   = tokens_locked − destroyed
+destroyed = (tokens_locked × X).Round(6)     // X = loss burn %, constants table, default 0.25
+returned  = tokens_locked − destroyed
 // destroyed tokens leave existence (sink); returned → wallet.tokens[team]
 // acc forfeited to 0; Ride.state ← Lost (terminal)
 ```
 
-`floor` rounding, in the 6-decimal unit. Only ever one loss event per ride (chain ends).
+`Round(6)` is round-half-up to 6 decimals (§6.12) — this replaces the previous `floor`
+rule. Only ever one loss event per ride (chain ends).
 
 ### 5.3 Burn (player or auto)
 
@@ -148,24 +150,25 @@ returned   = tokens_locked − destroyed
 tb_credit   = tokens_locked + acc
 player_TB  += tb_credit
 team_basket += tb_credit                    // Team Championship
-wallet.currency += base_at_lock × tokens_locked     // paid by CommonPool (mints on deficit — mechanical invariant, never +EV)
+wallet.currency += (base_at_lock × tokens_locked).Round(6)   // paid by CommonPool (mints on deficit — mechanical invariant, never +EV); half-up to 6 dp (§6.12)
 // tokens_locked destroyed (sink)
 ```
 
 ### 5.4 Base price
 
 ```
-base ← base × 1.05  if team won  last match
-base ← base × 0.95  if team lost last match
+base ← (base × 1.05).Round(6)  if team won  last match
+base ← (base × 0.95).Round(6)  if team lost last match
 // applied once per team per match, inside ResolveMatch
 // invariant: base > 0 (strictly positive; multipliers clamped to a tiny epsilon at the boundary)
 // existing rides are immune: base_at_lock already frozen
+// .Round(6): half-up to 6 decimals, keeps base at scale 6 across the whole season (§6.12)
 ```
 
 ### 5.5 Reserve buy (only token faucet at `[Launch]`)
 
 ```
-price       = Team.base × amount             // current base, not frozen
+price       = (Team.base × amount).Round(6)   // current base, not frozen; half-up to 6 dp (§6.12)
 wallet.currency  -= price    → CommonPool
 reserve(team)    -= amount
 wallet.tokens[team] += amount
@@ -191,7 +194,7 @@ Closed. Sources of currency: registration grants (one-time). Sinks: reserve buys
 9. **Result append-only.** A `ResolveMatch` for an already-resolved match is a no-op. MVP does not support corrections.
 10. **CommonPool mechanical safety.** Burns always pay `base_at_lock × tokens_locked`; if the pool would go negative it pays anyway (mints). This is an invariant guarantee, not a player-facing lever and not a sim lever. The closed loop makes deficit structurally unreachable; a negative balance is an observability alert, not gameplay.
 11. **Terminal states.** `Lost`, `Burned`, `Unlocked` are terminal; no op may mutate them.
-12. **Precision.** All token math is fixed-point at 6 decimals. The only permitted rounding is the loss-destruction `floor`; burn/reserve/buy arithmetic uses exact 6-decimal values.
+12. **Precision.** All persisted token/currency arithmetic is rounded to **6 decimals, round-half-up** (default decimal rounding) at **every write boundary**: `UpdateBase`, `AccDelta` accrual, burn currency payout, reserve-buy price, and loss-destruction. There is no `floor` anywhere; the prior `floor` rule at loss-destruction is superseded. Inputs are 6-decimal fixed-point (`NUMERIC(38,6)` storage); the result of every persisted arithmetic operation is `Round(6)` before write. `Round(6)` is round-half-up to 6 decimals (the default `decimal.Decimal` policy after `decimal.DivisionPrecision = 6`).
 
 ---
 
@@ -244,8 +247,9 @@ Closed. Sources of currency: registration grants (one-time). Sinks: reserve buys
 | `epsilon` | base lower bound | 1e-6 | `base > 0` clamp |
 | `cut_off` | action-phase lead time | 1h | round cutoff |
 | precision | token decimals | 6 | fixed-point unit |
+| rounding | persisted-arithmetic rounding mode | half-up | applies at every write boundary (§6.12) |
 
-Each is a per-season engine config constant. `X`, `s`, `W`, `L`, `K`, `G` are **sim outputs**, not design inputs — see `game_design.md` §10 for sim verification obligations. Sell cap (2× base) and taker fee (1%) are `[Market]` addendum constants, not engine-core.
+Each is a per-season engine config constant. `X`, `s`, `W`, `L`, `K`, `G` and `rounding` are **sim outputs**, not design inputs — see `game_design.md` §10 for sim verification obligations. Sell cap (2× base) and taker fee (1%) are `[Market]` addendum constants, not engine-core.
 
 ---
 
