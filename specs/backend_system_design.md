@@ -1244,12 +1244,16 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/setup-go@v5
-        with: { go-version: '1.22' }
+        with: { go-version: '1.26' }
       - uses: actions/checkout@v4
       - run: go test ./...
       - run: go vet ./...
       - uses: golangci/golangci-lint-action@v6
-      - run: go run github.com/golang/vulncheck/cmd/govulncheck@latest ./...
+        with:
+          version: v1.64.8
+      - uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: "1.26"
       - run: docker build -t ghcr.io/league-tokens/backend:${{ github.sha }} .
       - run: docker push ghcr.io/league-tokens/backend:${{ github.sha }}
   deploy:
