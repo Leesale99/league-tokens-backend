@@ -1,0 +1,31 @@
+{
+  "eval_id": 2,
+  "eval_name": "specific-issue",
+  "prompt": "Implement ticket #3 from the board",
+  "assertions": [
+    {
+      "text": "Fetches issue #3 details using gh issue view 3",
+      "type": "command_check"
+    },
+    {
+      "text": "Moves issue #3 to In progress on the project board",
+      "type": "command_check"
+    },
+    {
+      "text": "Creates worktree with branch feat/3-<slug>",
+      "type": "command_check"
+    },
+    {
+      "text": "Delegates implementation to /implement skill",
+      "type": "workflow_check"
+    },
+    {
+      "text": "Opens PR with Closes #3",
+      "type": "command_check"
+    },
+    {
+      "text": "Moves to In review and adds ready-for-human label",
+      "type": "command_check"
+    }
+  ]
+}

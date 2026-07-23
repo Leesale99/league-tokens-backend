@@ -1,0 +1,27 @@
+{
+  "eval_id": 3,
+  "eval_name": "casual-phrasing",
+  "prompt": "Work on the next issue from the board",
+  "assertions": [
+    {
+      "text": "Queries project board for Ready items",
+      "type": "command_check"
+    },
+    {
+      "text": "Moves first Ready item to In progress",
+      "type": "command_check"
+    },
+    {
+      "text": "Creates git worktree and branch",
+      "type": "command_check"
+    },
+    {
+      "text": "Delegates to /implement",
+      "type": "workflow_check"
+    },
+    {
+      "text": "Opens PR and updates board to In review with ready-for-human label",
+      "type": "command_check"
+    }
+  ]
+}

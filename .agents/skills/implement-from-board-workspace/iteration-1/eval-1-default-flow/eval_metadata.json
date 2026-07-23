@@ -1,0 +1,35 @@
+{
+  "eval_id": 1,
+  "eval_name": "default-flow",
+  "prompt": "Pick up the next task from the board and implement it",
+  "assertions": [
+    {
+      "text": "Queries project board for Ready items using gh project item-list",
+      "type": "command_check"
+    },
+    {
+      "text": "Moves selected item to In progress using gh project item-edit with option 47fc9ee4",
+      "type": "command_check"
+    },
+    {
+      "text": "Creates git worktree with branch naming feat/<number>-<slug>",
+      "type": "command_check"
+    },
+    {
+      "text": "Delegates implementation to /implement skill",
+      "type": "workflow_check"
+    },
+    {
+      "text": "Opens PR with gh pr create including Closes #<n> in body",
+      "type": "command_check"
+    },
+    {
+      "text": "Moves item to In review using gh project item-edit with option df73e18b",
+      "type": "command_check"
+    },
+    {
+      "text": "Adds ready-for-human label to the issue",
+      "type": "command_check"
+    }
+  ]
+}

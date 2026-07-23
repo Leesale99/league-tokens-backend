@@ -1,0 +1,28 @@
+{
+  "project": {
+    "owner": "Leesale99",
+    "number": 2,
+    "node_id": "PVT_kwHOANYNx84BePPd"
+  },
+  "fields": {
+    "status": {
+      "field_id": "PVTSSF_lAHOANYNx84BePPdzhYq8vE",
+      "options": {
+        "backlog": "f75ad846",
+        "ready": "61e4505c",
+        "in_progress": "47fc9ee4",
+        "in_review": "df73e18b",
+        "done": "98236657"
+      }
+    }
+  },
+  "worktree": {
+    "parent_dir": "..",
+    "prefix": "league-tokens-backend",
+    "branch_prefix": "feat"
+  },
+  "labels": {
+    "ready_for_agent": "ready-for-agent",
+    "ready_for_human": "ready-for-human"
+  }
+}
