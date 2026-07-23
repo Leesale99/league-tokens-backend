@@ -1,0 +1,221 @@
+name: Go Code Review (OpenCode)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: opencode-review-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  OPENCODE_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  # Restrict what the agent can execute — deny everything except read-only git/gh commands.
+  OPENCODE_PERMISSION: >-
+    {"bash": {"git diff*": "allow", "git log*": "allow", "gh pr diff*": "allow",
+    "gh pr view*": "allow", "gh pr comment*": "allow", "gh api*": "allow", "*": "deny"}}
+
+jobs:
+  quality:
+    name: Review — Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - name: Install OpenCode
+        run: curl -fsSL https://opencode.ai/install | bash
+
+      - name: Install Go skills
+        run: npx skills add https://github.com/samber/cc-skills-golang -a opencode --skill '*' -y --copy
+
+      - name: Run quality review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          opencode run -m openrouter/z-ai/glm-5.2 "
+          REPO: $REPO
+          PR NUMBER: $PR_NUMBER
+
+          You are a senior Go engineer performing a focused code quality review.
+
+          - Use \`gh pr diff\` to read the diff.
+          - Use \`gh pr view\` to read description and metadata.
+          - For every line-specific issue, call:
+            gh api repos/$REPO/pulls/$PR_NUMBER/comments -f body='<comment>' -f commit_id='<sha>' -f path='<file>' -F line=<line> -f side=RIGHT
+            Include a \`\`\`suggestion block when the fix is a direct 1:1 replacement.
+          - Post one top-level summary with: gh pr comment $PR_NUMBER --body '<summary>'
+          - Apply skill guidelines: golang-code-style, golang-naming, golang-documentation.
+          - Priority: suggestion-first. Skip anything gofmt already handles.
+          - Every comment: name the problem, explain when it matters, give a concrete fix.
+          - Do not praise good code. Check for duplicate points before posting.
+          - Label each comment: 🟡 SUGGESTION
+          - Read ./AGENTS.md and ./CONTEXT.md for project conventions first.
+          "
+
+  correctness:
+    name: Review — Correctness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - run: curl -fsSL https://opencode.ai/install | bash
+      - run: npx skills add https://github.com/samber/cc-skills-golang -a opencode --skill '*' -y --copy
+      - name: Run correctness review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          opencode run -m openrouter/z-ai/glm-5.2 "
+          REPO: $REPO
+          PR NUMBER: $PR_NUMBER
+
+          You are a senior Go engineer performing correctness and safety review.
+          Use gh pr diff / gh pr view, then post inline comments via gh api (as above)
+          and one summary via gh pr comment.
+
+          Apply skills: golang-error-handling, golang-safety, golang-concurrency.
+          Priority: blocking-first — flag swallowed errors, nil derefs, data races
+          even when the fix is non-trivial.
+          Label severity: 🔴 BLOCKING, 🟠 IMPORTANT, 🟡 SUGGESTION.
+          Read ./AGENTS.md and ./CONTEXT.md first. No duplicate comments.
+          "
+
+  security:
+    name: Review — Security & Dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - run: curl -fsSL https://opencode.ai/install | bash
+      - run: npx skills add https://github.com/samber/cc-skills-golang -a opencode --skill '*' -y --copy
+      - name: Run security review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          opencode run -m openrouter/z-ai/glm-5.2 "
+          REPO: $REPO
+          PR NUMBER: $PR_NUMBER
+
+          You are a senior Go security engineer. Apply skills: golang-security,
+          golang-dependency-management. Priority: blocking-first — security and
+          supply-chain risk beats style. For every finding: name the vuln class,
+          explain attack vector/impact, give a safe alternative.
+          Post inline via gh api, summary via gh pr comment.
+          Severity: 🔴 BLOCKING, 🟠 IMPORTANT, 🟡 SUGGESTION.
+          Read ./AGENTS.md and ./CONTEXT.md first. No duplicate comments.
+          "
+
+  quality-depth:
+    name: Review — Tests, Performance & Observability
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - run: curl -fsSL https://opencode.ai/install | bash
+      - run: npx skills add https://github.com/samber/cc-skills-golang -a opencode --skill '*' -y --copy
+      - name: Run tests/perf/observability review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          opencode run -m openrouter/z-ai/glm-5.2 "
+          REPO: $REPO
+          PR NUMBER: $PR_NUMBER
+
+          Apply skills: golang-testing, golang-performance, golang-observability,
+          golang-modernize. Tests/Performance are important (missing coverage on
+          exported paths, allocation hot-spots). Observability/Modernize are
+          suggestion-first. Post inline via gh api, summary via gh pr comment.
+          Severity: 🟠 IMPORTANT, 🟡 SUGGESTION. No duplicate comments.
+          "
+
+  ci-diagnosis:
+    name: Review — CI Failure Diagnosis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [quality, correctness, security, quality-depth]
+    if: ${{ always() && github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - run: curl -fsSL https://opencode.ai/install | bash
+      - name: Diagnose failures
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          opencode run -m openrouter/z-ai/glm-5.2 "
+          Check if any job in run $RUN_ID failed via gh run view. If all succeeded,
+          post nothing. If a job failed, post one gh pr comment $PR_NUMBER summarizing
+          which job failed, why (log excerpt), and how to fix it.
+          "
+
+  discuss:
+    name: Review — Discuss
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ (github.event_name == 'pull_request_review_comment' || github.event_name == 'pull_request_review') && !endsWith(github.event.sender.login, '[bot]') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - run: curl -fsSL https://opencode.ai/install | bash
+      - name: Discuss review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          opencode run -m openrouter/z-ai/glm-5.2 "
+          A human posted a review comment on PR $PR_NUMBER. Read the thread via
+          gh pr view / gh api. Reply only if there's a factual Go mistake, a bug
+          risk in the proposal, or a clarification would unblock discussion.
+          Skip style debates or already-acknowledged points. Keep replies to 1-2
+          sentences, posted via gh api inline comment or gh pr comment.
+          "
