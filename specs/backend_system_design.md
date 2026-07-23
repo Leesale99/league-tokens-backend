@@ -9,7 +9,7 @@
 | **Architectural method** | Modular Monolith + Domain-Driven Design + Hexagonal (Ports and Adapters) + Clean Architecture principles + Onion-style layered modules + SOLID + software design patterns — explicitly chosen so each module is independently extractable to a microservice (ADR-0009) |
 | **Demo target** | VPS: 1 core / 4 GB RAM / 50 GB disk / 4 TB bandwidth; 10k active users (ADR-0006) |
 | **1.0 target** | Horizontally scaling backend fleet; multi-AZ managed Postgres; managed broker; managed K8s (ADR-0009) |
-| **Companion documents** | Twelve ADRs (`specs/adr/0001`–`0012`) and the glossary (`specs/glossary.md`) |
+| **Companion documents** | Twelve ADRs (`docs/adr/0001`–`0012`) and the glossary (`specs/glossary.md`) |
 
 > **Abstract.** This document synthesizes the backend architecture for the **League
 > Tokens** game engine at the `[Launch]` demo and along the **1.0** scaling pathway. It
@@ -1092,7 +1092,7 @@ flowchart LR
   `Cause`. Sentinel errors per context (`errors.Is`/`errors.As` work); the HTTP layer
   renders `application/problem+json` (RFC 7807). Idempotency-key collisions return
   `infra.idempotency_conflict` 409; `AlreadyResolved` returns `game.already_resolved`
-  409. See `specs/adr/0011-error-model.md` for the canonical code table.
+  409. See `docs/adr/0011-error-model.md` for the canonical code table.
 
 ### 7.6 Security posture
 
