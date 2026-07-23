@@ -1,0 +1,33 @@
+linters:
+  enable:
+    - depguard
+    - govet
+    - staticcheck
+    - errcheck
+    - gosimple
+    - ineffassign
+    - unused
+
+linters-settings:
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/identity"
+            desc: "Cross-context import: identity must not be imported outside cmd/server"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/schedule"
+            desc: "Cross-context import: schedule must not be imported outside cmd/server"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/game"
+            desc: "Cross-context import: game must not be imported outside cmd/server"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/ledger"
+            desc: "Cross-context import: ledger must not be imported outside cmd/server"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/rankings"
+            desc: "Cross-context import: rankings must not be imported outside cmd/server"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/market"
+            desc: "Cross-context import: market must not be imported outside cmd/server"
+        files:
+          - "**/*.go"
+          - "!cmd/server/**/*.go"
+
+run:
+  timeout: 5m
