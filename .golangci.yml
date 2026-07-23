@@ -4,30 +4,96 @@ linters:
     - govet
     - staticcheck
     - errcheck
-    - gosimple
     - ineffassign
     - unused
 
 linters-settings:
   depguard:
     rules:
-      main:
+      game:
+        files:
+          - "internal/game/**/*.go"
         deny:
           - pkg: "github.com/Leesale99/league-tokens-backend/internal/identity"
-            desc: "Cross-context import: identity must not be imported outside cmd/server"
+            desc: "Cross-context import: identity must not be imported from game"
           - pkg: "github.com/Leesale99/league-tokens-backend/internal/schedule"
-            desc: "Cross-context import: schedule must not be imported outside cmd/server"
-          - pkg: "github.com/Leesale99/league-tokens-backend/internal/game"
-            desc: "Cross-context import: game must not be imported outside cmd/server"
+            desc: "Cross-context import: schedule must not be imported from game"
           - pkg: "github.com/Leesale99/league-tokens-backend/internal/ledger"
-            desc: "Cross-context import: ledger must not be imported outside cmd/server"
+            desc: "Cross-context import: ledger must not be imported from game"
           - pkg: "github.com/Leesale99/league-tokens-backend/internal/rankings"
-            desc: "Cross-context import: rankings must not be imported outside cmd/server"
+            desc: "Cross-context import: rankings must not be imported from game"
           - pkg: "github.com/Leesale99/league-tokens-backend/internal/market"
-            desc: "Cross-context import: market must not be imported outside cmd/server"
+            desc: "Cross-context import: market must not be imported from game"
+      identity:
         files:
-          - "**/*.go"
-          - "!cmd/server/**/*.go"
+          - "internal/identity/**/*.go"
+        deny:
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/game"
+            desc: "Cross-context import: game must not be imported from identity"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/schedule"
+            desc: "Cross-context import: schedule must not be imported from identity"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/ledger"
+            desc: "Cross-context import: ledger must not be imported from identity"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/rankings"
+            desc: "Cross-context import: rankings must not be imported from identity"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/market"
+            desc: "Cross-context import: market must not be imported from identity"
+      schedule:
+        files:
+          - "internal/schedule/**/*.go"
+        deny:
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/game"
+            desc: "Cross-context import: game must not be imported from schedule"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/identity"
+            desc: "Cross-context import: identity must not be imported from schedule"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/ledger"
+            desc: "Cross-context import: ledger must not be imported from schedule"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/rankings"
+            desc: "Cross-context import: rankings must not be imported from schedule"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/market"
+            desc: "Cross-context import: market must not be imported from schedule"
+      ledger:
+        files:
+          - "internal/ledger/**/*.go"
+        deny:
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/game"
+            desc: "Cross-context import: game must not be imported from ledger"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/identity"
+            desc: "Cross-context import: identity must not be imported from ledger"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/schedule"
+            desc: "Cross-context import: schedule must not be imported from ledger"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/rankings"
+            desc: "Cross-context import: rankings must not be imported from ledger"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/market"
+            desc: "Cross-context import: market must not be imported from ledger"
+      rankings:
+        files:
+          - "internal/rankings/**/*.go"
+        deny:
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/game"
+            desc: "Cross-context import: game must not be imported from rankings"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/identity"
+            desc: "Cross-context import: identity must not be imported from rankings"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/schedule"
+            desc: "Cross-context import: schedule must not be imported from rankings"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/ledger"
+            desc: "Cross-context import: ledger must not be imported from rankings"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/market"
+            desc: "Cross-context import: market must not be imported from rankings"
+      market:
+        files:
+          - "internal/market/**/*.go"
+        deny:
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/game"
+            desc: "Cross-context import: game must not be imported from market"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/identity"
+            desc: "Cross-context import: identity must not be imported from market"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/schedule"
+            desc: "Cross-context import: schedule must not be imported from market"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/ledger"
+            desc: "Cross-context import: ledger must not be imported from market"
+          - pkg: "github.com/Leesale99/league-tokens-backend/internal/rankings"
+            desc: "Cross-context import: rankings must not be imported from market"
 
 run:
   timeout: 5m
