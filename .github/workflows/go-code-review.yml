@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  OPENCODE_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   # Restrict what the agent can execute — deny everything except read-only git/gh commands.
   OPENCODE_PERMISSION: >-
     {"bash": {"git diff*": "allow", "git log*": "allow", "gh pr diff*": "allow",
