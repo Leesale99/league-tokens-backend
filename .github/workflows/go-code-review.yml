@@ -23,16 +23,16 @@ concurrency:
   group: opencode-review-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}
   cancel-in-progress: true
 
-  env:
-    OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    PR_NUMBER: ${{ github.event.pull_request.number }}
-    REPO: ${{ github.repository }}
-    WORKFLOW_RUN_ID: ${{ github.run_id }}
-    # Restrict what the agent can execute — deny everything except read-only git/gh commands.
-    OPENCODE_PERMISSION: >-
-      {"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow", "gh pr diff*": "allow",
-      "gh pr view*": "allow", "gh pr comment*": "allow", "gh api*": "allow"}}
+env:
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+  REPO: ${{ github.repository }}
+  WORKFLOW_RUN_ID: ${{ github.run_id }}
+  # Restrict what the agent can execute — deny everything except read-only git/gh commands.
+  OPENCODE_PERMISSION: >-
+    {"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow", "gh pr diff*": "allow",
+    "gh pr view*": "allow", "gh pr comment*": "allow", "gh api*": "allow"}}
 
 jobs:
   # ── Job 1: Code quality (suggestion-first) ──────────────────────────────────
@@ -104,7 +104,6 @@ jobs:
             Check project context: @./CONTEXT.md
 
             Label each comment: 🟡 **SUGGESTION**
-            "
   # ── Job 2: Correctness (blocking-first) ─────────────────────────────────────
   # Covers: error handling, code safety, concurrency
   correctness:
@@ -174,7 +173,6 @@ jobs:
             - 🔴 **BLOCKING** — definite bug, data race, or correctness failure; must be fixed before merge.
             - 🟠 **IMPORTANT** — significant risk that requires unusual conditions to manifest.
             - 🟡 **SUGGESTION** — defensive improvement with low-probability failure mode.
-            "
   # ── Job 3: Security & dependencies (blocking-first) ─────────────────────────
   # Covers: security, dependency health
   security:
@@ -243,8 +241,7 @@ jobs:
             - 🔴 **BLOCKING** — exploitable vulnerability or high-risk dependency; must be fixed before merge.
             - 🟠 **IMPORTANT** — significant risk that requires specific conditions.
             - 🟡 **SUGGESTION** — defense-in-depth improvement; optional but worthwhile.
-            "
-  # ── Job 4: Tests, performance, observability & modernization ─────────────────
+            # ── Job 4: Tests, performance, observability & modernization ─────────────────
   # Covers: tests, performance, observability, modernize
   quality-depth:
     name: Review — Tests, Performance & Observability
@@ -317,8 +314,7 @@ jobs:
             - 🟠 **IMPORTANT** — missing test for a critical exported path; allocation hot-spot on a
               latency-sensitive path.
             - 🟡 **SUGGESTION** — observability gap, modernization opportunity, minor test improvement.
-          "
-  # ── Job 5: CI failure diagnosis ──────────────────────────────────────────────
+          # ── Job 5: CI failure diagnosis ──────────────────────────────────────────────
   # Waits for all review jobs, then diagnoses any failures and posts a fix summary.
   ci-diagnosis:
     name: Review — CI Failure Diagnosis
@@ -358,8 +354,7 @@ jobs:
               1. Which job(s) failed and why (log excerpt).
               2. Concrete steps to fix the failure (configuration change, missing secret, infra issue).
             - Post nothing else. No chat output.
-          "
-  # ── Job 6: Discuss review comments ──────────────────────────────────────────
+          # ── Job 6: Discuss review comments ──────────────────────────────────────────
   # Triggered when a human posts a review comment. Replies only when warranted.
   discuss:
     name: Review — Discuss
@@ -411,4 +406,3 @@ jobs:
 
             Use: "gh api repos/$REPO/pulls/$PR_NUMBER/comments -f body='<comment>' -f commit_id='<sha>' -f path='<file>' -F line=<line> -f side=RIGHT"
             to reply inline when the comment is line-specific, otherwise use `gh pr comment`. Post nothing else. No chat output.
-          "
