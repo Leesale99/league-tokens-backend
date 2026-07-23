@@ -58,7 +58,7 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         with:
-          model: openrouter/z-ai/glm-5.2
+          model: openrouter/deepseek/deepseek-v4-pro
           use_github_token: true
           prompt: |
             REPO: $REPO
@@ -126,7 +126,7 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         with:
-          model: openrouter/z-ai/glm-5.2
+          model: openrouter/deepseek/deepseek-v4-pro
           use_github_token: true
           prompt: |
             REPO: $REPO
@@ -195,7 +195,7 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         with:
-          model: openrouter/z-ai/glm-5.2
+          model: openrouter/deepseek/deepseek-v4-pro
           use_github_token: true
           prompt: |
             REPO: $REPO
@@ -263,7 +263,7 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         with:
-          model: openrouter/z-ai/glm-5.2
+          model: openrouter/deepseek/deepseek-v4-pro
           use_github_token: true
           prompt: |
             REPO: $REPO
@@ -336,7 +336,7 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         with:
-          model: openrouter/z-ai/glm-5.2
+          model: openrouter/deepseek/deepseek-v4-pro
           use_github_token: true
           prompt: |
             REPO: $REPO
@@ -376,7 +376,7 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         with:
-          model: openrouter/z-ai/glm-5.2
+          model: openrouter/deepseek/deepseek-v4-pro
           use_github_token: true
           prompt: |
             REPO: $REPO
