@@ -3,7 +3,7 @@ name: Review — Correctness
 on:
   workflow_call:
     secrets:
-      OPENROUTER_API_KEY:
+      OPENCODE_GO_API_KEY:
         required: true
       GH_TOKEN:
         required: true
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
       GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
       PR_NUMBER: ${{ inputs.PR_NUMBER }}
       REPO: ${{ inputs.REPO }}
@@ -59,7 +59,7 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         with:
-          model: opencode-go/deepseek-v4-pro
+          model: 'opencode-go/deepseek-v4-pro'
           use_github_token: true
           prompt: |
             REPO: $REPO
