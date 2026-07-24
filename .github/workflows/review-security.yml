@@ -42,16 +42,23 @@ jobs:
           go-version: stable
 
       - name: Install Go skills
-        run: npx skills add https://github.com/samber/cc-skills-golang -a opencode --skill '*' -y --copy
+        run: |
+          for i in 1 2 3; do
+            npx skills add https://github.com/samber/cc-skills-golang -a opencode \
+              --skill golang-security \
+              --skill golang-dependency-management \
+              -y --copy && break
+            sleep 10
+          done
 
       - name: Configure git
         run: |
           git config --global user.email "opencode[bot]@users.noreply.github.com"
           git config --global user.name "opencode[bot]"
 
-      - uses: anomalyco/opencode/github@latest
+      - uses: anomalyco/opencode/github@v1
         with:
-          model: openrouter/deepseek/deepseek-v4-pro
+          model: opencode-go/deepseek-v4-pro
           use_github_token: true
           prompt: |
             REPO: $REPO
@@ -100,8 +107,8 @@ jobs:
             - 🟡 **SUGGESTION** — defense-in-depth improvement; optional but worthwhile.
 
       - name: Post sticky summary comment
+        if: success()
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: "<!-- opencode-review-security -->"
           path: security-review-summary.md
-

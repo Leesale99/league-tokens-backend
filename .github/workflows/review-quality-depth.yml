@@ -42,16 +42,25 @@ jobs:
           go-version: stable
 
       - name: Install Go skills
-        run: npx skills add https://github.com/samber/cc-skills-golang -a opencode --skill '*' -y --copy
+        run: |
+          for i in 1 2 3; do
+            npx skills add https://github.com/samber/cc-skills-golang -a opencode \
+              --skill golang-testing \
+              --skill golang-performance \
+              --skill golang-observability \
+              --skill golang-modernize \
+              -y --copy && break
+            sleep 10
+          done
 
       - name: Configure git
         run: |
           git config --global user.email "opencode[bot]@users.noreply.github.com"
           git config --global user.name "opencode[bot]"
 
-      - uses: anomalyco/opencode/github@latest
+      - uses: anomalyco/opencode/github@v1
         with:
-          model: openrouter/deepseek/deepseek-v4-pro
+          model: opencode-go/deepseek-v4-pro
           use_github_token: true
           prompt: |
             REPO: $REPO
@@ -105,8 +114,8 @@ jobs:
             - 🟡 **SUGGESTION** — observability gap, modernization opportunity, minor test improvement.
 
       - name: Post sticky summary comment
+        if: success()
         uses: marocchino/sticky-pull-request-comment@v2
         with:
-          header: "<!-- opencode-review-performance -->"
+          header: "<!-- opencode-review-quality-depth -->"
           path: quality-depth-review-summary.md
-

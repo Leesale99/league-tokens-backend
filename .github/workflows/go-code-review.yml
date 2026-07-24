@@ -2,7 +2,7 @@ name: Go Code Review (OpenCode)
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened]
 
 permissions:
   contents: write
@@ -50,6 +50,19 @@ jobs:
     secrets:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ci-diagnosis:
+    name: Review — CI Failure Diagnosis
+    needs: [quality, correctness, security, quality-depth]
+    if: ${{ always() && github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          if echo '${{ toJSON(needs) }}' | grep -q '\"result\":\"failure\"'; then
+            echo "One or more review jobs failed. Check the job logs above."
+            exit 1
+          fi
 
   quality-depth:
     name: Review — Tests, Performance & Observability
