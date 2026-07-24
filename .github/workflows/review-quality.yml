@@ -97,8 +97,6 @@ jobs:
             Check project context: @./CONTEXT.md
             Check agents guidelines: @/docs/agents/domain.md
 
-            Check docs/adr/* specs/* only if necessary:
-
             Label each comment: 🟡 **SUGGESTION**
 
       - name: Post sticky summary comment

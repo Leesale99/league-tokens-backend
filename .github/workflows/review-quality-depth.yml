@@ -66,7 +66,7 @@ jobs:
               - You MUST batch all of your inline suggestions into a single GitHub Pull Request Review payload.
               - set the 'event' field to "COMMENT"
               - Use suggestions tool when the fix is a direct 1:1 replacement.
-            - Also write a short overall summary to a file named performance-review-summary.md.
+            - Also write a short overall summary to a file named quality-depth-review-summary.md.
             - Post nothing else. No chat output.
 
             ## Scope — apply these skill guidelines
@@ -108,5 +108,5 @@ jobs:
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: "<!-- opencode-review-performance -->"
-          path: performance-review-summary.md
+          path: quality-depth-review-summary.md
 
