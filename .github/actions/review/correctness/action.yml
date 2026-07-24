@@ -4,7 +4,7 @@ description: Correctness and safety review (error handling, code safety, concurr
 runs:
   using: composite
   steps:
-    - uses: ./.github/actions/setup-review
+    - uses: ./.github/actions/review/setup
 
     - uses: anomalyco/opencode/github@latest
       with:
