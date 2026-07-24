@@ -113,27 +113,11 @@ jobs:
               latency-sensitive path.
             - 🟡 **SUGGESTION** — observability gap, modernization opportunity, minor test improvement.
 
-            Do not post a standalone summary comment — only inline review comments on
-            specific code lines. A separate CI step posts the overall summary as a sticky
-            comment.
-
-            Before posting any review, examine existing bot review comments on this PR.
-            Skip lines already covered by a bot comment. If a previous bot comment refers
-            to code that has since changed, dismiss it as resolved. Only flag new issues
-            not already addressed by existing review comments.
-
-      - name: Ensure summary for sticky comment
-        if: always()
-        run: |
-          if [ ! -s quality-depth-review-summary.md ]; then
-            echo "❌ Review job failed. [View logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." > quality-depth-review-summary.md
-          fi
-
-      - name: Post sticky summary comment
-        if: always()
-        uses: marocchino/sticky-pull-request-comment@v2
+      - name: Upload review summary
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
-          header: "<!-- opencode-review-quality-depth -->"
+          name: quality-depth-review-summary
           path: quality-depth-review-summary.md
-          recreate: true
-          skip_unchanged: true
+          if-no-files-found: ignore
+          retention-days: 1
