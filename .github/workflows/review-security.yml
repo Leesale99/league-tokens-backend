@@ -36,6 +36,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
+          ref: refs/pull/${{ inputs.PR_NUMBER }}/head
 
       - uses: actions/setup-go@v6
         with:
