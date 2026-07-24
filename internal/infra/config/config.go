@@ -18,15 +18,25 @@ type PostgresConfig struct {
 	MaxConns int    `env:"PG_MAX_CONNS" envDefault:"25"`
 
 	password string
+	dsn      string
 }
 
-func (c *PostgresConfig) DSN() string {
+func (c *PostgresConfig) buildDSN() string {
 	ssl := c.SSLMode
 	if ssl == "" {
 		ssl = "disable"
 	}
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		c.User, c.password, c.Host, c.Port, c.Database, ssl)
+}
+
+func (c *PostgresConfig) setPassword(pwd string) {
+	c.password = pwd
+	c.dsn = c.buildDSN()
+}
+
+func (c *PostgresConfig) DSN() string {
+	return c.dsn
 }
 
 func (c *PostgresConfig) Validate() error {
