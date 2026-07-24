@@ -10,7 +10,7 @@ type Config struct {
 func ParseConfig() (*Config, error) {
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse game config: %w", err)
 	}
 	return &cfg, nil
 }
