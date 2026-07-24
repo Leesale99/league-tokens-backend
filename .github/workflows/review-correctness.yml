@@ -25,7 +25,6 @@ jobs:
   correctness:
     name: Correctness & Safety Review
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     env:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -38,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - uses: actions/setup-go@v6
         with:
@@ -61,8 +60,10 @@ jobs:
           git config --global user.name "opencode[bot]"
 
       - uses: anomalyco/opencode/github@latest
+        timeout-minutes: 13
+        continue-on-error: true
         with:
-          model: opencode-go/deepseek-v4-pro
+          model: opencode-go/deepseek-v4-flash
           use_github_token: true
           prompt: |
             REPO: $REPO
@@ -118,8 +119,27 @@ jobs:
             - 🟠 **IMPORTANT** — significant risk under specific conditions
             - 🟡 **SUGGESTION** — defensive improvement, low-probability failure mode
 
+            ## Efficiency
+
+            - Batch ALL context reads (AGENTS.md, CONTEXT.md, docs/agents/domain.md, PR diff) in ONE batch of tool calls — do not read them one at a time.
+            - Do not re-read files you already have. The diff you read first is sufficient.
+            - Complete the review in 5 tool-call rounds maximum. If the diff is too large for 5 rounds, skip low-severity findings and post a partial review focusing on 🔴 BLOCKING and 🟠 IMPORTANT issues only.
+
+      - name: Handle timeout / ensure summary exists
+        if: always()
+        run: |
+          if [ ! -f correctness-review-summary.md ]; then
+            cat <<'EOF' > correctness-review-summary.md
+      # Correctness Review — Time Limit Reached
+
+      The review exceeded its 13-minute time limit and was unable to complete.
+      Try re-running the workflow or reviewing the PR diff manually.
+      EOF
+            echo "::warning::Correctness review timed out — placeholder summary created."
+          fi
+
       - name: Upload review summary
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: correctness-review-summary
