@@ -18,6 +18,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   quality-depth:
     name: Tests, Performance & Observability Review
@@ -69,7 +72,7 @@ jobs:
             You are a senior Go engineer reviewing for test coverage, performance, observability,
             and code modernization.
 
-            Review this pull request.
+            Review this pull request. Do NOT commit or push any changes.
             - Use the tool capabilities to attach comments directly to the relevant line numbers.
               - DO NOT use individual inline commenting tools or individual comment endpoints.
               - You MUST batch all of your inline suggestions into a single GitHub Pull Request Review payload.

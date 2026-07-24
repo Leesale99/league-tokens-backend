@@ -18,6 +18,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   security:
     name: Security & Dependency Review
@@ -66,7 +69,7 @@ jobs:
 
             You are a senior Go security engineer performing a focused security and dependency review.
 
-            Review this pull request.
+            Review this pull request. Do NOT commit or push any changes.
             - Use the tool capabilities to attach comments directly to the relevant line numbers.
               - DO NOT use individual inline commenting tools or individual comment endpoints.
               - You MUST batch all of your inline suggestions into a single GitHub Pull Request Review payload.
