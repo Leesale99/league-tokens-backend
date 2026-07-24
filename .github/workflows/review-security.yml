@@ -127,12 +127,10 @@ jobs:
         if: always()
         run: |
           if [ ! -f security-review-summary.md ]; then
-            cat <<'EOF' > security-review-summary.md
-      # Security Review — Time Limit Reached
-
-      The review exceeded its 13-minute time limit and was unable to complete.
-      Try re-running the workflow or reviewing the PR diff manually.
-      EOF
+            echo "# Security Review — Time Limit Reached" > security-review-summary.md
+            echo "" >> security-review-summary.md
+            echo "The review exceeded its 13-minute time limit and was unable to complete." >> security-review-summary.md
+            echo "Try re-running the workflow or reviewing the PR diff manually." >> security-review-summary.md
             echo "::warning::Security review timed out — placeholder summary created."
           fi
 

@@ -131,12 +131,10 @@ jobs:
         if: always()
         run: |
           if [ ! -f quality-depth-review-summary.md ]; then
-            cat <<'EOF' > quality-depth-review-summary.md
-      # Quality-Depth Review — Time Limit Reached
-
-      The review exceeded its 13-minute time limit and was unable to complete.
-      Try re-running the workflow or reviewing the PR diff manually.
-      EOF
+            echo "# Quality-Depth Review — Time Limit Reached" > quality-depth-review-summary.md
+            echo "" >> quality-depth-review-summary.md
+            echo "The review exceeded its 13-minute time limit and was unable to complete." >> quality-depth-review-summary.md
+            echo "Try re-running the workflow or reviewing the PR diff manually." >> quality-depth-review-summary.md
             echo "::warning::Quality-depth review timed out — placeholder summary created."
           fi
 
