@@ -29,7 +29,7 @@ jobs:
           git config user.email "opencode[bot]@users.noreply.github.com"
 
       - name: Run opencode
-        uses: anomalyco/opencode/github@v1
+        uses: anomalyco/opencode/github@latest
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
