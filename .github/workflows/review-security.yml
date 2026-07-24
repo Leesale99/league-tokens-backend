@@ -58,7 +58,7 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         with:
-          model: deepseek-v4-pro
+          model: opencode-go/deepseek-v4-pro
           use_github_token: true
           prompt: |
             REPO: $REPO
