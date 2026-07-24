@@ -35,5 +35,5 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: openrouter/deepseek/deepseek-v4-pro
+          model: openrouter/deepseek/deepseek-v4-flash
           use_github_token: true
