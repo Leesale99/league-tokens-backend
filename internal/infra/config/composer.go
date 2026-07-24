@@ -3,7 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"strings"
 
 	gamecfg "github.com/Leesale99/league-tokens-backend/internal/game/application"
@@ -88,7 +89,8 @@ func Load() (*ComposerConfig, error) {
 func MustLoad() *ComposerConfig {
 	cfg, err := Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		slog.Error("config load failed", "error", err)
+		os.Exit(1)
 	}
 	return cfg
 }
@@ -96,37 +98,34 @@ func MustLoad() *ComposerConfig {
 func loadSecrets(postgres *PostgresConfig, telemetry *TelemetryConfig,
 	identity *identitycfg.Config, schedule *schedulecfg.Config, feed *feedcfg.Config,
 ) error {
-	var errs []string
+	var errs []error
 
 	if pwd, err := ReadSecret("pg_password"); err != nil {
-		errs = append(errs, fmt.Sprintf("pg_password: %v", err))
+		errs = append(errs, fmt.Errorf("pg_password: %w", err))
 	} else {
-		postgres.password = pwd
+		postgres.setPassword(pwd)
 	}
 
 	if token, err := ReadSecret("otlp_token"); err != nil {
-		errs = append(errs, fmt.Sprintf("otlp_token: %v", err))
+		errs = append(errs, fmt.Errorf("otlp_token: %w", err))
 	} else {
 		telemetry.OTLPToken = token
 	}
 
 	if key, err := ReadSecret("jwt_signing_key"); err != nil {
-		errs = append(errs, fmt.Sprintf("jwt_signing_key: %v", err))
+		errs = append(errs, fmt.Errorf("jwt_signing_key: %w", err))
 	} else {
 		identity.JWTSigningKeyED25519 = key
 	}
 
 	if key, err := ReadSecret("provider_api_key"); err != nil {
-		errs = append(errs, fmt.Sprintf("provider_api_key: %v", err))
+		errs = append(errs, fmt.Errorf("provider_api_key: %w", err))
 	} else {
 		schedule.ProviderAPIKey = key
 		feed.ProviderAPIKey = key
 	}
 
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func validateAll(configs ...interface{ Validate() error }) error {
