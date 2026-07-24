@@ -3,16 +3,7 @@ name: Go Code Review (OpenCode)
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # pull_request_review_comment:
-  #   types: [created]
-  # pull_request_review:
-  #   types: [submitted]
 
-# Security note: these permissions apply to the entire repository, not just the current PR.
-# `pull-requests: write` allows the workflow to post, edit, and resolve comments on ANY pull request.
-# `actions: read` allows reading logs from ANY workflow run, which may contain sensitive output.
-# Scope risk by restricting the trigger to PRs from trusted contributors or protected branches,
-# and by never logging secrets in CI steps.
 permissions:
   contents: read
   issues: read
@@ -23,74 +14,51 @@ concurrency:
   group: opencode-review-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}
   cancel-in-progress: true
 
-env:
-  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  PR_NUMBER: ${{ github.event.pull_request.number }}
-  REPO: ${{ github.repository }}
-  WORKFLOW_RUN_ID: ${{ github.run_id }}
-  # Restrict what the agent can execute — deny everything except read-only git/gh commands.
-  OPENCODE_PERMISSION: >-
-    {"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow", "gh pr diff*": "allow",
-    "gh pr view*": "allow", "gh pr comment*": "allow", "gh api*": "allow"}}
-
 jobs:
-  # ── Job 1: Code quality (suggestion-first) ──────────────────────────────────
-  # Covers: style, naming, documentation
   quality:
     name: Review — Quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
     if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
-    steps:
-      - uses: ./.github/actions/review/quality
+    uses: ./.github/workflows/review-quality.yml
+    with:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+      WORKFLOW_RUN_ID: ${{ github.run_id }}
+    secrets:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── Job 2: Correctness (blocking-first) ─────────────────────────────────────
-  # Covers: error handling, code safety, concurrency
   correctness:
     name: Review — Correctness
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
     if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
-    steps:
-      - uses: ./.github/actions/review/correctness
+    uses: ./.github/workflows/review-correctness.yml
+    with:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+      WORKFLOW_RUN_ID: ${{ github.run_id }}
+    secrets:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── Job 3: Security & dependencies (blocking-first) ─────────────────────────
-  # Covers: security, dependency health
   security:
     name: Review — Security & Dependencies
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
     if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
-    steps:
-      - uses: ./.github/actions/review/security
+    uses: ./.github/workflows/review-security.yml
+    with:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+      WORKFLOW_RUN_ID: ${{ github.run_id }}
+    secrets:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── Job 4: Tests, performance, observability & modernization ─────────────────
-  # Covers: tests, performance, observability, modernize
   quality-depth:
     name: Review — Tests, Performance & Observability
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
     if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
-    steps:
-      - uses: ./.github/actions/review/quality-depth
-
-  # ── Job 5: CI failure diagnosis ──────────────────────────────────────────────
-  # Waits for all review jobs, then diagnoses any failures and posts a fix summary.
-  # ci-diagnosis:
-  #   name: Review — CI Failure Diagnosis
-  #   if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 15
-  #   steps:
-  #     - uses: ./.github/actions/review/failure
-
-  # ── Job 6: Discuss review comments ──────────────────────────────────────────
-  # Triggered when a human posts a review comment. Replies only when warranted.
-  # discuss:
-  #   name: Review — Discuss
-  #   if: ${{ github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 15
-  #   steps:
-  #     - uses: ./.github/actions/review/discuss
+    uses: ./.github/workflows/review-quality-depth.yml
+    with:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+      WORKFLOW_RUN_ID: ${{ github.run_id }}
+    secrets:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
