@@ -3,7 +3,7 @@ name: Review — Security & Dependencies
 on:
   workflow_call:
     secrets:
-      OPENROUTER_API_KEY:
+      OPENCODE_API_KEY:
         required: true
       GH_TOKEN:
         required: true
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
       PR_NUMBER: ${{ inputs.PR_NUMBER }}
       REPO: ${{ inputs.REPO }}
@@ -106,9 +106,27 @@ jobs:
             - 🟠 **IMPORTANT** — significant risk that requires specific conditions.
             - 🟡 **SUGGESTION** — defense-in-depth improvement; optional but worthwhile.
 
+            Do not post a standalone summary comment — only inline review comments on
+            specific code lines. A separate CI step posts the overall summary as a sticky
+            comment.
+
+            Before posting any review, examine existing bot review comments on this PR.
+            Skip lines already covered by a bot comment. If a previous bot comment refers
+            to code that has since changed, dismiss it as resolved. Only flag new issues
+            not already addressed by existing review comments.
+
+      - name: Ensure summary for sticky comment
+        if: always()
+        run: |
+          if [ ! -s security-review-summary.md ]; then
+            echo "❌ Review job failed. [View logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." > security-review-summary.md
+          fi
+
       - name: Post sticky summary comment
-        if: success()
+        if: always()
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: "<!-- opencode-review-security -->"
           path: security-review-summary.md
+          recreate: true
+          skip_unchanged: true
