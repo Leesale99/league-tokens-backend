@@ -5,7 +5,7 @@ on:
     secrets:
       OPENROUTER_API_KEY:
         required: true
-      GITHUB_TOKEN:
+      GH_TOKEN:
         required: true
     inputs:
       PR_NUMBER:
@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 15
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
       PR_NUMBER: ${{ inputs.PR_NUMBER }}
       REPO: ${{ inputs.REPO }}
       WORKFLOW_RUN_ID: ${{ inputs.WORKFLOW_RUN_ID }}
