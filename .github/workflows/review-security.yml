@@ -5,6 +5,8 @@ on:
     secrets:
       OPENROUTER_API_KEY:
         required: true
+      GITHUB_TOKEN:
+        required: true
     inputs:
       PR_NUMBER:
         required: true
