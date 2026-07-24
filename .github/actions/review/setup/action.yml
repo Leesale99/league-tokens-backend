@@ -1,0 +1,19 @@
+name: Setup Review Environment
+description: Checkout repo, set up Go, and install Go skills
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: stable
+
+    - name: Install Go skills
+      shell: bash
+      run: npx skills add https://github.com/samber/cc-skills-golang -a opencode --skill '*' -y --copy
+

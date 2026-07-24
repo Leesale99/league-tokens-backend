@@ -1,0 +1,64 @@
+name: Review — Correctness
+description: Correctness and safety review (error handling, code safety, concurrency) — blocking-first
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-review
+
+    - uses: anomalyco/opencode/github@latest
+      with:
+        model: openrouter/deepseek/deepseek-v4-pro
+        use_github_token: true
+        prompt: |
+          REPO: $REPO
+          PR NUMBER: $PR_NUMBER
+
+          You are a senior Go engineer performing a focused correctness and safety review.
+
+          Review this pull request.
+          - Use the tool capabilities to attach comments directly to the relevant line numbers.
+            - DO NOT use individual inline commenting tools or individual comment endpoints. 
+            - You MUST batch all of your inline suggestions into a single GitHub Pull Request Review payload.
+            - set the 'event' field to "COMMENT"
+            - Use suggestions tool when the fix is a direct 1:1 replacement.
+          - Also write a short overall summary to a file named correctness-review-summary.md.
+          - Post nothing else. No chat output.
+
+          ## Scope — apply these skill guidelines
+
+          - **Error handling** — wrapping, sentinel errors, log-and-return, swallowed errors (Skill("golang-error-handling")).
+          - **Code safety** — nil dereference, map/slice aliasing, integer overflows, uninitialized state (Skill("golang-safety")).
+          - **Concurrency** — goroutine lifecycle, mutex usage, channel patterns, context propagation, data races (Skill("golang-concurrency")).
+
+          ## Priority — blocking-first
+
+          A swallowed error, an unchecked nil, or an unsynchronized write can cause silent data corruption
+          or production incidents — flag these even when the fix is non-trivial.
+
+          ## How to report
+
+          Every comment must:
+          1. Name the specific problem (not just its symptom)
+          2. Explain under what conditions it matters or fails
+          3. Provide a concrete fix — corrected code snippet or safer pattern
+
+          Write short, concise comments. Only comment when there is a specific issue. Do not praise
+          the good stuff. Before posting, verify the point was not already raised.
+
+          Note: the PR branch is already checked out in the current working directory.
+
+          Check project guidelines: @./AGENTS.md
+          Check project context: @./CONTEXT.md
+          Check agents guidelines: @/docs/agents/domain.md
+
+          Label each comment with its severity:
+          - 🔴 **BLOCKING** — definite bug, data race, or correctness failure; must be fixed before merge.
+          - 🟠 **IMPORTANT** — significant risk that requires unusual conditions to manifest.
+          - 🟡 **SUGGESTION** — defensive improvement with low-probability failure mode.
+
+    - name: Post sticky summary comment
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: "<!-- opencode-review-correctness -->"
+        path: correctness-review-summary.md
