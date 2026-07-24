@@ -129,14 +129,8 @@ func TestLoad_MissingPostgresDatabase(t *testing.T) {
 	defer func() { secretsDir = origDir }()
 
 	setValidEnv(t)
-	// Unset required PG_DATABASE so env.Parse rejects it
-	origPGDB, pgDBWasSet := os.LookupEnv("PG_DATABASE")
-	os.Unsetenv("PG_DATABASE")
-	t.Cleanup(func() {
-		if pgDBWasSet {
-			os.Setenv("PG_DATABASE", origPGDB)
-		}
-	})
+	// Setting PG_DATABASE to empty triggers env.Parse required-field error
+	t.Setenv("PG_DATABASE", "")
 
 	createSecrets(t, secretsDir)
 
@@ -212,8 +206,8 @@ func TestPostgresDSN(t *testing.T) {
 		Port:     5432,
 		SSLMode:  "require",
 		MaxConns: 10,
-		password: "secret",
 	}
+	cfg.setPassword("secret")
 	dsn := cfg.DSN()
 	want := "postgres://testuser:secret@localhost:5432/testdb?sslmode=require"
 	if dsn != want {
@@ -235,10 +229,12 @@ func TestTelemetryLogLevelSlog(t *testing.T) {
 		{"", "INFO"},
 	}
 	for _, tt := range tests {
-		cfg := &TelemetryConfig{LogLevel: tt.level}
-		got := cfg.LogLevelSlog().String()
-		if got != tt.want {
-			t.Errorf("LogLevelSlog(%q) = %q, want %q", tt.level, got, tt.want)
-		}
+		t.Run(tt.level, func(t *testing.T) {
+			cfg := &TelemetryConfig{LogLevel: tt.level}
+			got := cfg.LogLevelSlog().String()
+			if got != tt.want {
+				t.Errorf("LogLevelSlog(%q) = %q, want %q", tt.level, got, tt.want)
+			}
+		})
 	}
 }
