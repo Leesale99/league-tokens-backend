@@ -129,12 +129,10 @@ jobs:
         if: always()
         run: |
           if [ ! -f correctness-review-summary.md ]; then
-            cat <<'EOF' > correctness-review-summary.md
-      # Correctness Review — Time Limit Reached
-
-      The review exceeded its 13-minute time limit and was unable to complete.
-      Try re-running the workflow or reviewing the PR diff manually.
-      EOF
+            echo "# Correctness Review — Time Limit Reached" > correctness-review-summary.md
+            echo "" >> correctness-review-summary.md
+            echo "The review exceeded its 13-minute time limit and was unable to complete." >> correctness-review-summary.md
+            echo "Try re-running the workflow or reviewing the PR diff manually." >> correctness-review-summary.md
             echo "::warning::Correctness review timed out — placeholder summary created."
           fi
 
