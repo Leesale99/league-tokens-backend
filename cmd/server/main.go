@@ -1,7 +1,13 @@
 package main
 
-import "fmt"
+import (
+	"log"
+
+	"github.com/Leesale99/league-tokens-backend/internal/infra/config"
+)
 
 func main() {
-	fmt.Println("starting")
+	cfg := config.MustLoad()
+	_ = cfg
+	log.Println("starting with valid config")
 }
