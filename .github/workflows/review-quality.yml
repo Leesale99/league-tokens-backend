@@ -68,47 +68,51 @@ jobs:
             REPO: $REPO
             PR NUMBER: $PR_NUMBER
 
-            You are a senior Go engineer performing a focused code quality review.
+            You are a senior Go engineer reviewing code quality for this PR.
 
-            Review this pull request. Do NOT commit or push any changes.
-            - Use the tool capabilities to attach comments directly to the relevant line numbers.
-              - DO NOT use individual inline commenting tools or individual comment endpoints.
-              - You MUST batch all of your inline suggestions into a single GitHub Pull Request Review payload.
-              - set the 'event' field to "COMMENT"
-              - Use suggestions tool when the fix is a direct 1:1 replacement.
-            - Also write a short overall summary to a file named quality-review-summary.md.
-            - Post nothing else. No chat output.
+            ## Task
 
-            ## Scope — apply these skill guidelines
+            1. Read the diff and project context below.
+            2. Post ONE GitHub PR Review (event: COMMENT) with all inline comments.
+            3. Write a short summary to quality-review-summary.md.
 
-            - **Code style** — formatting, comment quality, idiomatic Go patterns (Skill("golang-code-style")).
-            - **Naming** — packages, types, variables, functions, constants (Skill("golang-naming")).
-            - **Documentation** — exported symbols, package-level docs, README impact (Skill("golang-documentation")).
+            No commits, no pushes, no standalone comments.
 
-            ## Priority — suggestion-first
+            ## Context
 
-            These areas reflect style and readability, not correctness. Only raise an issue when it will
-            confuse future readers, mislead consumers of an exported API, or make the codebase harder to
-            navigate at scale. Do not flag formatting that `gofmt` handles automatically.
+            The PR branch is already checked out.
+            @./AGENTS.md
+            @./CONTEXT.md
+            @/docs/agents/domain.md
 
-            ## How to report
+            ## Scope
 
-            Every comment must:
-            1. Name the specific problem (not just its symptom)
-            2. Explain under what conditions it matters or fails
-            3. Provide a concrete fix — renamed identifier, corrected code snippet, or safer pattern
+            - **Code style** — idioms, readability, patterns (Skill("golang-code-style"))
+            - **Naming** — packages, types, variables, functions (Skill("golang-naming"))
+            - **Docs** — exported symbols, package docs (Skill("golang-documentation"))
 
-            Write short, concise comments. Only comment when there is a specific issue. Do not praise
-            the good stuff. Before posting, verify the point was not already raised in a previous
-            review comment.
+            Skip formatting that `gofmt` handles.
 
-            Note: the PR branch is already checked out in the current working directory.
+            ## Rules
 
-            Check project guidelines: @./AGENTS.md
-            Check project context: @./CONTEXT.md
-            Check agents guidelines: @/docs/agents/domain.md
+            - Flag issues that confuse readers or mislead API consumers — skip nitpicks
+            - Skip lines already covered by an existing bot comment
+            - Dismiss previous bot comments on code that has since changed
 
-            Label each comment: 🟡 **SUGGESTION**
+            ## How to write comments
+
+            Structure each comment as:
+
+              🟡 **SUGGESTION** — Short title
+
+              1–2 sentences: the issue, why it matters.
+
+              ```suggestion
+              corrected code
+              ```
+
+            Use ```suggestion blocks when the fix is a direct code replacement.
+            Tone: professional, constructive. Explain the "why", not just the "what".
 
       - name: Upload review summary
         if: success()
