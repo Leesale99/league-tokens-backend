@@ -7,7 +7,7 @@ on:
     types: [created]
 
 concurrency:
-  group: opencode-${{ github.event.issue.number || github.event.pull_request.number }}-${{ github.event.comment.html_url }}
+  group: opencode-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
@@ -32,6 +32,14 @@ jobs:
           git config user.name "opencode[bot]"
           git config user.email "opencode[bot]@users.noreply.github.com"
 
+      - name: Rebase onto latest remote
+        run: |
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          git fetch origin "$BRANCH" 2>/dev/null || true
+          if git rev-parse "origin/$BRANCH" >/dev/null 2>&1; then
+            git rebase "origin/$BRANCH"
+          fi
+
       - name: Run opencode
         uses: anomalyco/opencode/github@latest
         env:
@@ -42,8 +50,8 @@ jobs:
           variant: minimal
           use_github_token: true
           prompt: |
-            When responding to a /oc or /opencode command, reply directly in the
-            comment thread where the command was issued — do not create a new
-            top-level comment. Before posting, check if a previous bot comment
-            in the same thread already addresses this topic and update it instead
-            of creating a duplicate. Keep responses concise.
+            Always reply in the same thread — never create top-level comments.
+            You may be triggered on issues as well as pull requests. If you
+            successfully committed changes, reply with a few words summarizing
+            what was changed. If anything fails, reply with a summary of the
+            error and any relevant log output.
