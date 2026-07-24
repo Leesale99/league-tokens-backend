@@ -58,8 +58,6 @@ jobs:
           git config --global user.name "opencode[bot]"
 
       - uses: anomalyco/opencode/github@latest
-        id: review
-        continue-on-error: true
         with:
           model: opencode-go/deepseek-v4-pro
           use_github_token: true
@@ -115,11 +113,3 @@ jobs:
         with:
           header: "<!-- opencode-review-security -->"
           path: security-review-summary.md
-
-      - name: Retry push on conflict
-        if: steps.review.outcome == 'failure'
-        run: |
-          BRANCH=$(gh pr view $PR_NUMBER --repo $REPO --json headRefName -q .headRefName)
-          git fetch origin "$BRANCH"
-          git rebase --autostash FETCH_HEAD
-          git push origin HEAD:"$BRANCH"
