@@ -108,9 +108,11 @@ jobs:
             - 🟠 **IMPORTANT** — significant risk that requires unusual conditions to manifest.
             - 🟡 **SUGGESTION** — defensive improvement with low-probability failure mode.
 
-      - name: Post sticky summary comment
+      - name: Upload review summary
         if: success()
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: actions/upload-artifact@v4
         with:
-          header: "<!-- opencode-review-correctness -->"
+          name: correctness-review-summary
           path: correctness-review-summary.md
+          if-no-files-found: ignore
+          retention-days: 1

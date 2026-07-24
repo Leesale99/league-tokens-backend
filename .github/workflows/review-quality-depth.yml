@@ -113,9 +113,11 @@ jobs:
               latency-sensitive path.
             - 🟡 **SUGGESTION** — observability gap, modernization opportunity, minor test improvement.
 
-      - name: Post sticky summary comment
+      - name: Upload review summary
         if: success()
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: actions/upload-artifact@v4
         with:
-          header: "<!-- opencode-review-quality-depth -->"
+          name: quality-depth-review-summary
           path: quality-depth-review-summary.md
+          if-no-files-found: ignore
+          retention-days: 1

@@ -107,9 +107,11 @@ jobs:
 
             Label each comment: 🟡 **SUGGESTION**
 
-      - name: Post sticky summary comment
+      - name: Upload review summary
         if: success()
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: actions/upload-artifact@v4
         with:
-          header: "<!-- opencode-review-quality -->"
+          name: quality-review-summary
           path: quality-review-summary.md
+          if-no-files-found: ignore
+          retention-days: 1
