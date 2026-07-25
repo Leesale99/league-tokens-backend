@@ -10,11 +10,6 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
-  issues: write
-  pull-requests: write
-  actions: read
 
 concurrency:
   group: opencode-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
