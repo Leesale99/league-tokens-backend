@@ -25,13 +25,6 @@ func (c *PostgresConfig) buildDSN() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		c.User, c.password, c.Host, c.Port, c.Database, c.SSLMode)
 }
-	ssl := c.SSLMode
-	if ssl == "" {
-		ssl = "disable"
-	}
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		c.User, c.password, c.Host, c.Port, c.Database, ssl)
-}
 
 func (c *PostgresConfig) setPassword(pwd string) {
 	c.password = pwd
@@ -39,6 +32,9 @@ func (c *PostgresConfig) setPassword(pwd string) {
 }
 
 func (c *PostgresConfig) DSN() string {
+	if c.dsn == "" {
+		c.dsn = c.buildDSN()
+	}
 	return c.dsn
 }
 

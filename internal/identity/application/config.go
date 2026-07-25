@@ -9,9 +9,8 @@ import (
 )
 
 type Config struct {
-	SessionTTL            time.Duration `env:"SESSION_TTL" envDefault:"24h"`
-	JWTSigningKeyED25519  string
-	JWTVerificationKeyED25519 string
+	SessionTTL           time.Duration `env:"SESSION_TTL" envDefault:"24h"`
+	JWTSigningKeyED25519 string
 }
 
 func ParseConfig() (*Config, error) {
