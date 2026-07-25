@@ -1,5 +1,11 @@
 name: Review — Quality
 
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+  actions: read
+
 on:
   workflow_call:
     secrets:
