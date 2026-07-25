@@ -1,58 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-status_emoji() {
-  case "$1" in
-    success) echo "✅ pass" ;;
-    failure) echo "❌ failure" ;;
-    skipped) echo "⏭️ skipped" ;;
-    cancelled) echo "🚫 cancelled" ;;
-    *) echo "❓ unknown" ;;
-  esac
-}
-
-cat <<BODYEOF > /tmp/pr-body.md
-## CI Review Status
-
+RESULTS="## Code Review Results
 | Review | Status |
 |--------|--------|
-| Quality | $(status_emoji "$QUALITY_RESULT") |
-| Correctness | $(status_emoji "$CORRECTNESS_RESULT") |
-| Security | $(status_emoji "$SECURITY_RESULT") |
-| Quality-Depth | $(status_emoji "$QUALITY_DEPTH_RESULT") |
+| Quality | ${QUALITY_RESULT:-skipped} |
+| Correctness | ${CORRECTNESS_RESULT:-skipped} |
+| Security | ${SECURITY_RESULT:-skipped} |
+| Quality Depth | ${QUALITY_DEPTH_RESULT:-skipped} |
 
-[View workflow run](https://github.com/${REPO}/actions/runs/${RUN_ID})
+"
 
----
+for review in quality correctness security quality-depth; do
+  filename="${review}-review-summary"
+  summary_file="summaries/${filename}/${filename}.md"
 
-BODYEOF
+  RESULTS+="<details>
+<summary>${review^} Review Summary</summary>
 
-has_summaries=false
-for type in quality quality-depth security correctness; do
-  file="summaries/${type}-review-summary/${type}-review-summary.md"
-  if [ -f "$file" ] && [ -s "$file" ]; then
-    has_summaries=true
-    break
+"
+  if [ -f "$summary_file" ]; then
+    RESULTS+="$(cat "$summary_file")
+"
+  else
+    RESULTS+="No review summary available.
+"
   fi
+  RESULTS+="</details>
+
+"
 done
 
-if $has_summaries; then
-  echo "## Aggregated Review Summaries" >> /tmp/pr-body.md
-  echo "" >> /tmp/pr-body.md
+RESULTS+="<!-- end-review -->"
 
-  for type in quality quality-depth security correctness; do
-    file="summaries/${type}-review-summary/${type}-review-summary.md"
-    if [ -f "$file" ] && [ -s "$file" ]; then
-      title=$(head -1 "$file" | sed 's/^#* *//')
-      echo "<details>" >> /tmp/pr-body.md
-      echo "<summary><b>${title}</b></summary>" >> /tmp/pr-body.md
-      echo "" >> /tmp/pr-body.md
-      tail -n +2 "$file" >> /tmp/pr-body.md
-      echo "" >> /tmp/pr-body.md
-      echo "</details>" >> /tmp/pr-body.md
-      echo "" >> /tmp/pr-body.md
-    fi
-  done
-fi
+current_body=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json body -q '.body')
+clean_body=$(echo "$current_body" | sed '/^## Code Review Results/,/^<!-- end-review -->$/d')
 
-gh pr edit "$PR_NUMBER" --repo "$REPO" --body-file /tmp/pr-body.md
+gh pr edit "$PR_NUMBER" --repo "$REPO" --body "${clean_body}
+
+${RESULTS}"

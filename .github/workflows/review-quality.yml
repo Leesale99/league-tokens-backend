@@ -61,7 +61,6 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         timeout-minutes: 13
-        continue-on-error: true
         with:
           model: opencode-go/deepseek-v4-pro
           use_github_token: true
