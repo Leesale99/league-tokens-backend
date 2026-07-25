@@ -22,6 +22,9 @@ type PostgresConfig struct {
 }
 
 func (c *PostgresConfig) buildDSN() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		c.User, c.password, c.Host, c.Port, c.Database, c.SSLMode)
+}
 	ssl := c.SSLMode
 	if ssl == "" {
 		ssl = "disable"
