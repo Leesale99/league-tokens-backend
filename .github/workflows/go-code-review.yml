@@ -1,5 +1,11 @@
 name: Go Code Review (OpenCode)
 
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+  actions: read
+
 on:
   pull_request:
     types: [opened, reopened]
