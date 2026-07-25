@@ -12,7 +12,7 @@ on:
 
 permissions:
   contents: read
-  issues: read
+  issues: write
   pull-requests: write
   actions: read
 
@@ -75,6 +75,8 @@ jobs:
     if: ${{ always() && github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+
       - name: Download review summaries
         uses: actions/download-artifact@v4
         with:
