@@ -106,10 +106,12 @@ func loadSecrets(postgres *PostgresConfig, telemetry *TelemetryConfig,
 		postgres.setPassword(pwd)
 	}
 
-	if token, err := ReadSecret("otlp_token"); err != nil {
-		errs = append(errs, fmt.Errorf("otlp_token: %w", err))
-	} else {
-		telemetry.OTLPToken = token
+	if telemetry.OTLPEndpoint != "" {
+		if token, err := ReadSecret("otlp_token"); err != nil {
+			errs = append(errs, fmt.Errorf("otlp_token: %w", err))
+		} else {
+			telemetry.OTLPToken = token
+		}
 	}
 
 	if key, err := ReadSecret("jwt_signing_key"); err != nil {
@@ -118,6 +120,7 @@ func loadSecrets(postgres *PostgresConfig, telemetry *TelemetryConfig,
 		identity.JWTSigningKeyED25519 = key
 	}
 
+	// provider_api_key is shared between schedule and feed as specified in ADR-0012.
 	if key, err := ReadSecret("provider_api_key"); err != nil {
 		errs = append(errs, fmt.Errorf("provider_api_key: %w", err))
 	} else {
