@@ -18,9 +18,6 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
-
 jobs:
   quality:
     name: Code Quality Review
@@ -59,7 +56,8 @@ jobs:
           git config --global user.email "opencode[bot]@users.noreply.github.com"
           git config --global user.name "opencode[bot]"
 
-      - uses: anomalyco/opencode/github@latest
+      - id: opencode-review
+        uses: anomalyco/opencode/github@latest
         timeout-minutes: 13
         with:
           model: opencode-go/deepseek-v4-pro
@@ -124,11 +122,19 @@ jobs:
         if: always()
         run: |
           if [ ! -f quality-review-summary.md ]; then
-            echo "# Quality Review — Time Limit Reached" > quality-review-summary.md
-            echo "" >> quality-review-summary.md
-            echo "The review exceeded its 13-minute time limit and was unable to complete." >> quality-review-summary.md
-            echo "Try re-running the workflow or reviewing the PR diff manually." >> quality-review-summary.md
-            echo "::warning::Quality review timed out — placeholder summary created."
+            if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ]; then
+              echo "# Quality Review — Time Limit Reached" > quality-review-summary.md
+              echo "" >> quality-review-summary.md
+              echo "The review exceeded its 13-minute time limit and was unable to complete." >> quality-review-summary.md
+              echo "Try re-running the workflow or reviewing the PR diff manually." >> quality-review-summary.md
+              echo "::warning::Quality review timed out — placeholder summary created."
+            else
+              echo "# Quality Review — Failed" > quality-review-summary.md
+              echo "" >> quality-review-summary.md
+              echo "The review encountered an error and was unable to complete." >> quality-review-summary.md
+              echo "Check the workflow logs for details, then try re-running." >> quality-review-summary.md
+              echo "::warning::Quality review failed — placeholder summary created."
+            fi
           fi
 
       - name: Upload review summary

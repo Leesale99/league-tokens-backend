@@ -18,9 +18,6 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
-
 jobs:
   quality-depth:
     name: Tests, Performance & Observability Review
@@ -60,7 +57,8 @@ jobs:
           git config --global user.email "opencode[bot]@users.noreply.github.com"
           git config --global user.name "opencode[bot]"
 
-      - uses: anomalyco/opencode/github@latest
+      - id: opencode-review
+        uses: anomalyco/opencode/github@latest
         timeout-minutes: 13
         with:
           model: opencode-go/deepseek-v4-pro
@@ -130,11 +128,19 @@ jobs:
         if: always()
         run: |
           if [ ! -f quality-depth-review-summary.md ]; then
-            echo "# Quality-Depth Review — Time Limit Reached" > quality-depth-review-summary.md
-            echo "" >> quality-depth-review-summary.md
-            echo "The review exceeded its 13-minute time limit and was unable to complete." >> quality-depth-review-summary.md
-            echo "Try re-running the workflow or reviewing the PR diff manually." >> quality-depth-review-summary.md
-            echo "::warning::Quality-depth review timed out — placeholder summary created."
+            if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ]; then
+              echo "# Quality-Depth Review — Time Limit Reached" > quality-depth-review-summary.md
+              echo "" >> quality-depth-review-summary.md
+              echo "The review exceeded its 13-minute time limit and was unable to complete." >> quality-depth-review-summary.md
+              echo "Try re-running the workflow or reviewing the PR diff manually." >> quality-depth-review-summary.md
+              echo "::warning::Quality-depth review timed out — placeholder summary created."
+            else
+              echo "# Quality-Depth Review — Failed" > quality-depth-review-summary.md
+              echo "" >> quality-depth-review-summary.md
+              echo "The review encountered an error and was unable to complete." >> quality-depth-review-summary.md
+              echo "Check the workflow logs for details, then try re-running." >> quality-depth-review-summary.md
+              echo "::warning::Quality-depth review failed — placeholder summary created."
+            fi
           fi
 
       - name: Upload review summary
