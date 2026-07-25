@@ -1,3 +1,6 @@
+// Package config provides shared-kernel configuration: typed env parsing,
+// Docker secret loading, and composition of per-context Config values for
+// startup wiring in cmd/server.
 package config
 
 import (
