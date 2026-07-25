@@ -18,9 +18,6 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
-
 jobs:
   correctness:
     name: Correctness & Safety Review
@@ -59,7 +56,8 @@ jobs:
           git config --global user.email "opencode[bot]@users.noreply.github.com"
           git config --global user.name "opencode[bot]"
 
-      - uses: anomalyco/opencode/github@latest
+      - id: opencode-review
+        uses: anomalyco/opencode/github@latest
         timeout-minutes: 13
         with:
           model: opencode-go/deepseek-v4-flash
@@ -128,11 +126,19 @@ jobs:
         if: always()
         run: |
           if [ ! -f correctness-review-summary.md ]; then
-            echo "# Correctness Review — Time Limit Reached" > correctness-review-summary.md
-            echo "" >> correctness-review-summary.md
-            echo "The review exceeded its 13-minute time limit and was unable to complete." >> correctness-review-summary.md
-            echo "Try re-running the workflow or reviewing the PR diff manually." >> correctness-review-summary.md
-            echo "::warning::Correctness review timed out — placeholder summary created."
+            if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ]; then
+              echo "# Correctness Review — Time Limit Reached" > correctness-review-summary.md
+              echo "" >> correctness-review-summary.md
+              echo "The review exceeded its 13-minute time limit and was unable to complete." >> correctness-review-summary.md
+              echo "Try re-running the workflow or reviewing the PR diff manually." >> correctness-review-summary.md
+              echo "::warning::Correctness review timed out — placeholder summary created."
+            else
+              echo "# Correctness Review — Failed" > correctness-review-summary.md
+              echo "" >> correctness-review-summary.md
+              echo "The review encountered an error and was unable to complete." >> correctness-review-summary.md
+              echo "Check the workflow logs for details, then try re-running." >> correctness-review-summary.md
+              echo "::warning::Correctness review failed — placeholder summary created."
+            fi
           fi
 
       - name: Upload review summary
