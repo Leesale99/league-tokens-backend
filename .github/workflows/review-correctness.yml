@@ -30,7 +30,7 @@ jobs:
       WORKFLOW_RUN_ID: ${{ inputs.WORKFLOW_RUN_ID }}
       OPENCODE_PERMISSION: >-
         {"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow", "gh pr diff*": "allow",
-        "gh pr view*": "allow", "gh pr comment*": "allow", "gh api*": "allow"}}
+        "gh pr view*": "allow", "gh api*": "allow"}}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -110,6 +110,31 @@ jobs:
 
             Use ```suggestion blocks when the fix is a direct code replacement.
             Tone: professional, constructive. Explain the "why", not just the "what".
+
+            ## How to post the review
+
+            Use this exact command — do NOT use `gh pr comment`:
+
+            ```bash
+            gh api repos/$REPO/pulls/$PR_NUMBER/reviews \
+              --input - << 'JSONEOF'
+            {
+              "event": "COMMENT",
+              "body": "optional summary body",
+              "comments": [
+                {
+                  "path": "path/to/file.go",
+                  "line": 42,
+                  "side": "RIGHT",
+                  "body": "[SEVERITY] — title\n\ndescription"
+                }
+              ]
+            }
+            JSONEOF
+            ```
+
+            The `body` field is optional — omit it if all findings are inline.
+            The `side` field must be "RIGHT" for lines in the PR diff.
 
             ## Severity
 
