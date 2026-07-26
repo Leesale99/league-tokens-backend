@@ -72,7 +72,7 @@ jobs:
 
             1. Read the diff and project context below.
             2. Post ONE GitHub PR Review (event: COMMENT) with all inline comments.
-            3. Write a short summary to security-review-summary.md.
+            3. Write a short summary to /tmp/security-review-summary.md.
 
             No commits, no pushes, no standalone comments.
 
@@ -124,18 +124,18 @@ jobs:
       - name: Handle timeout / ensure summary exists
         if: always()
         run: |
-          if [ ! -f security-review-summary.md ]; then
+          if [ ! -f /tmp/security-review-summary.md ]; then
             if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ]; then
-              echo "# Security Review — Time Limit Reached" > security-review-summary.md
-              echo "" >> security-review-summary.md
-              echo "The review exceeded its 13-minute time limit and was unable to complete." >> security-review-summary.md
-              echo "Try re-running the workflow or reviewing the PR diff manually." >> security-review-summary.md
+              echo "# Security Review — Time Limit Reached" > /tmp/security-review-summary.md
+              echo "" >> /tmp/security-review-summary.md
+              echo "The review exceeded its 13-minute time limit and was unable to complete." >> /tmp/security-review-summary.md
+              echo "Try re-running the workflow or reviewing the PR diff manually." >> /tmp/security-review-summary.md
               echo "::warning::Security review timed out — placeholder summary created."
             else
-              echo "# Security Review — Failed" > security-review-summary.md
-              echo "" >> security-review-summary.md
-              echo "The review encountered an error and was unable to complete." >> security-review-summary.md
-              echo "Check the workflow logs for details, then try re-running." >> security-review-summary.md
+              echo "# Security Review — Failed" > /tmp/security-review-summary.md
+              echo "" >> /tmp/security-review-summary.md
+              echo "The review encountered an error and was unable to complete." >> /tmp/security-review-summary.md
+              echo "Check the workflow logs for details, then try re-running." >> /tmp/security-review-summary.md
               echo "::warning::Security review failed — placeholder summary created."
             fi
           fi
@@ -145,6 +145,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: security-review-summary
-          path: security-review-summary.md
+          path: /tmp/security-review-summary.md
           if-no-files-found: ignore
           retention-days: 1

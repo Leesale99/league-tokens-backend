@@ -73,7 +73,7 @@ jobs:
 
             1. Read the diff and project context below.
             2. Post ONE GitHub PR Review (event: COMMENT) with all inline comments.
-            3. Write a short summary to correctness-review-summary.md.
+            3. Write a short summary to /tmp/correctness-review-summary.md.
 
             No commits, no pushes, no standalone comments.
 
@@ -126,18 +126,18 @@ jobs:
       - name: Handle timeout / ensure summary exists
         if: always()
         run: |
-          if [ ! -f correctness-review-summary.md ]; then
+          if [ ! -f /tmp/correctness-review-summary.md ]; then
             if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ]; then
-              echo "# Correctness Review — Time Limit Reached" > correctness-review-summary.md
-              echo "" >> correctness-review-summary.md
-              echo "The review exceeded its 13-minute time limit and was unable to complete." >> correctness-review-summary.md
-              echo "Try re-running the workflow or reviewing the PR diff manually." >> correctness-review-summary.md
+              echo "# Correctness Review — Time Limit Reached" > /tmp/correctness-review-summary.md
+              echo "" >> /tmp/correctness-review-summary.md
+              echo "The review exceeded its 13-minute time limit and was unable to complete." >> /tmp/correctness-review-summary.md
+              echo "Try re-running the workflow or reviewing the PR diff manually." >> /tmp/correctness-review-summary.md
               echo "::warning::Correctness review timed out — placeholder summary created."
             else
-              echo "# Correctness Review — Failed" > correctness-review-summary.md
-              echo "" >> correctness-review-summary.md
-              echo "The review encountered an error and was unable to complete." >> correctness-review-summary.md
-              echo "Check the workflow logs for details, then try re-running." >> correctness-review-summary.md
+              echo "# Correctness Review — Failed" > /tmp/correctness-review-summary.md
+              echo "" >> /tmp/correctness-review-summary.md
+              echo "The review encountered an error and was unable to complete." >> /tmp/correctness-review-summary.md
+              echo "Check the workflow logs for details, then try re-running." >> /tmp/correctness-review-summary.md
               echo "::warning::Correctness review failed — placeholder summary created."
             fi
           fi
@@ -147,6 +147,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: correctness-review-summary
-          path: correctness-review-summary.md
+          path: /tmp/correctness-review-summary.md
           if-no-files-found: ignore
           retention-days: 1
