@@ -1,4 +1,4 @@
-module.exports = async function({ github, context }) {
+export default async function ({ github, context }) {
   const needsData = JSON.parse(process.env.NEEDS_DATA);
   const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
   const prNumber = parseInt(process.env.PR_NUMBER, 10);
