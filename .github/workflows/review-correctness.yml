@@ -22,7 +22,6 @@ jobs:
   correctness:
     name: Correctness & Safety Review
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     env:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -31,11 +30,12 @@ jobs:
       WORKFLOW_RUN_ID: ${{ inputs.WORKFLOW_RUN_ID }}
       OPENCODE_PERMISSION: >-
         {"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow", "gh pr diff*": "allow",
-        "gh pr view*": "allow", "gh pr comment*": "allow", "gh api*": "allow"}}
+        "gh pr view*": "allow", "gh api*": "allow"}}
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-go@v6
         with:
@@ -57,78 +57,121 @@ jobs:
           git config --global user.email "opencode[bot]@users.noreply.github.com"
           git config --global user.name "opencode[bot]"
 
-      - uses: anomalyco/opencode/github@latest
+      - id: opencode-review
+        uses: anomalyco/opencode/github@latest
+        timeout-minutes: 13
         with:
-          model: opencode-go/deepseek-v4-pro
+          model: opencode-go/deepseek-v4-flash
           use_github_token: true
           prompt: |
             REPO: $REPO
             PR NUMBER: $PR_NUMBER
 
-            You are a senior Go engineer performing a focused correctness and safety review.
+            You are a senior Go engineer reviewing correctness and safety for this PR.
 
-            Review this pull request.
-            - Use the tool capabilities to attach comments directly to the relevant line numbers.
-              - DO NOT use individual inline commenting tools or individual comment endpoints.
-              - You MUST batch all of your inline suggestions into a single GitHub Pull Request Review payload.
-              - set the 'event' field to "COMMENT"
-              - Use suggestions tool when the fix is a direct 1:1 replacement.
-            - Also write a short overall summary to a file named correctness-review-summary.md.
-            - Post nothing else. No chat output.
+            ## Task
 
-            ## Scope — apply these skill guidelines
+            1. Read the diff and project context below.
+            2. Post ONE GitHub PR Review (event: COMMENT) with all inline comments.
+            3. Write a short summary to /tmp/correctness-review-summary.md.
 
-            - **Error handling** — wrapping, sentinel errors, log-and-return, swallowed errors (Skill("golang-error-handling")).
-            - **Code safety** — nil dereference, map/slice aliasing, integer overflows, uninitialized state (Skill("golang-safety")).
-            - **Concurrency** — goroutine lifecycle, mutex usage, channel patterns, context propagation, data races (Skill("golang-concurrency")).
+            No commits, no pushes, no standalone comments.
 
-            ## Priority — blocking-first
+            ## Context
 
-            A swallowed error, an unchecked nil, or an unsynchronized write can cause silent data corruption
-            or production incidents — flag these even when the fix is non-trivial.
+            The PR branch is already checked out.
+            @./AGENTS.md
+            @./CONTEXT.md
+            @/docs/agents/domain.md
 
-            ## How to report
+            ## Scope
 
-            Every comment must:
-            1. Name the specific problem (not just its symptom)
-            2. Explain under what conditions it matters or fails
-            3. Provide a concrete fix — corrected code snippet or safer pattern
+            - **Error handling** — wrapping, sentinel errors, swallowed errors (Skill("golang-error-handling"))
+            - **Safety** — nil dereference, aliasing, overflows, uninitialized state (Skill("golang-safety"))
+            - **Concurrency** — goroutines, mutexes, channels, context, races (Skill("golang-concurrency"))
 
-            Write short, concise comments. Only comment when there is a specific issue. Do not praise
-            the good stuff. Before posting, verify the point was not already raised.
+            ## Rules
 
-            Note: the PR branch is already checked out in the current working directory.
+            - Flag swallowed errors, unchecked nil, unsynchronized writes — even when the fix is non-trivial
+            - Skip lines already covered by an existing bot comment
+            - Dismiss previous bot comments on code that has since changed
 
-            Check project guidelines: @./AGENTS.md
-            Check project context: @./CONTEXT.md
-            Check agents guidelines: @/docs/agents/domain.md
+            ## How to write comments
 
-            Label each comment with its severity:
-            - 🔴 **BLOCKING** — definite bug, data race, or correctness failure; must be fixed before merge.
-            - 🟠 **IMPORTANT** — significant risk that requires unusual conditions to manifest.
-            - 🟡 **SUGGESTION** — defensive improvement with low-probability failure mode.
+            Structure each comment as:
 
-            Do not post a standalone summary comment — only inline review comments on
-            specific code lines. A separate CI step posts the overall summary as a sticky
-            comment.
+              [SEVERITY] — Short title
 
-            Before posting any review, examine existing bot review comments on this PR.
-            Skip lines already covered by a bot comment. If a previous bot comment refers
-            to code that has since changed, dismiss it as resolved. Only flag new issues
-            not already addressed by existing review comments.
+              1–2 sentences: the issue, why it matters.
 
-      - name: Ensure summary for sticky comment
+              ```suggestion
+              corrected code
+              ```
+
+            Use ```suggestion blocks when the fix is a direct code replacement.
+            Tone: professional, constructive. Explain the "why", not just the "what".
+
+            ## How to post the review
+
+            Use this exact command — do NOT use `gh pr comment`:
+
+            ```bash
+            gh api repos/$REPO/pulls/$PR_NUMBER/reviews \
+              --input - << 'JSONEOF'
+            {
+              "event": "COMMENT",
+              "body": "optional summary body",
+              "comments": [
+                {
+                  "path": "path/to/file.go",
+                  "line": 42,
+                  "side": "RIGHT",
+                  "body": "[SEVERITY] — title\n\ndescription"
+                }
+              ]
+            }
+            JSONEOF
+            ```
+
+            The `body` field is optional — omit it if all findings are inline.
+            The `side` field must be "RIGHT" for lines in the PR diff.
+
+            ## Severity
+
+            - 🔴 **BLOCKING** — definite bug, data race, or correctness failure; must fix before merge
+            - 🟠 **IMPORTANT** — significant risk under specific conditions
+            - 🟡 **SUGGESTION** — defensive improvement, low-probability failure mode
+
+            ## Efficiency
+
+            - Batch ALL context reads (AGENTS.md, CONTEXT.md, docs/agents/domain.md, PR diff) in ONE batch of tool calls — do not read them one at a time.
+            - Do not re-read files you already have. The diff you read first is sufficient.
+            - Complete the review in 5 tool-call rounds maximum. If the diff is too large for 5 rounds, skip low-severity findings and post a partial review focusing on 🔴 BLOCKING and 🟠 IMPORTANT issues only.
+
+      - name: Handle timeout / ensure summary exists
         if: always()
         run: |
-          if [ ! -s correctness-review-summary.md ]; then
-            echo "❌ Review job failed. [View logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." > correctness-review-summary.md
+          if [ ! -f /tmp/correctness-review-summary.md ]; then
+            if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ]; then
+              echo "# Correctness Review — Time Limit Reached" > /tmp/correctness-review-summary.md
+              echo "" >> /tmp/correctness-review-summary.md
+              echo "The review exceeded its 13-minute time limit and was unable to complete." >> /tmp/correctness-review-summary.md
+              echo "Try re-running the workflow or reviewing the PR diff manually." >> /tmp/correctness-review-summary.md
+              echo "::warning::Correctness review timed out — placeholder summary created."
+            else
+              echo "# Correctness Review — Failed" > /tmp/correctness-review-summary.md
+              echo "" >> /tmp/correctness-review-summary.md
+              echo "The review encountered an error and was unable to complete." >> /tmp/correctness-review-summary.md
+              echo "Check the workflow logs for details, then try re-running." >> /tmp/correctness-review-summary.md
+              echo "::warning::Correctness review failed — placeholder summary created."
+            fi
           fi
 
-      - name: Post sticky summary comment
+      - name: Upload review summary
         if: always()
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: actions/upload-artifact@v4
         with:
-          header: "<!-- opencode-review-correctness -->"
-          path: correctness-review-summary.md
-          recreate: true
-          skip_unchanged: true
+          name: correctness-review-summary
+          path: /tmp/correctness-review-summary.md
+          if-no-files-found: ignore
+          retention-days: 1

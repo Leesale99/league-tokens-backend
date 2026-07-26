@@ -1,20 +1,21 @@
 name: Go Code Review (OpenCode)
 
-on:
-  pull_request:
-    types: [opened, reopened]
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: 'PR number to review'
-        required: true
-        type: string
-
 permissions:
   contents: read
   issues: read
   pull-requests: write
   actions: read
+
+on:
+  pull_request:
+    types: [opened, reopened, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review"
+        required: true
+        type: string
+
 
 concurrency:
   group: opencode-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
@@ -23,7 +24,10 @@ concurrency:
 jobs:
   quality:
     name: Review — Quality
-    if: ${{ !endsWith(github.actor, '[bot]') }}
+    if: |
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     uses: ./.github/workflows/review-quality.yml
     with:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -35,7 +39,10 @@ jobs:
 
   correctness:
     name: Review — Correctness
-    if: ${{ !endsWith(github.actor, '[bot]') }}
+    if: |
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     uses: ./.github/workflows/review-correctness.yml
     with:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -47,7 +54,10 @@ jobs:
 
   security:
     name: Review — Security & Dependencies
-    if: ${{ !endsWith(github.actor, '[bot]') }}
+    if: |
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     uses: ./.github/workflows/review-security.yml
     with:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -59,7 +69,10 @@ jobs:
 
   quality-depth:
     name: Review — Tests, Performance & Observability
-    if: ${{ !endsWith(github.actor, '[bot]') }}
+    if: |
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     uses: ./.github/workflows/review-quality-depth.yml
     with:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -69,27 +82,39 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  ci-diagnosis:
-    name: Review — Status Dashboard
+  aggregate-and-report:
+    name: Aggregate Reviews & Report
     needs: [quality, correctness, security, quality-depth]
-    if: ${{ always() && !endsWith(github.actor, '[bot]') }}
+    if: |
+      always() &&
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Update PR status dashboard
-        uses: actions/github-script@v7
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-          NEEDS_DATA: ${{ toJSON(needs) }}
+      - name: Download review summaries
+        uses: actions/download-artifact@v4
         with:
-          script: |
-            const updateDashboard = require('./.github/scripts/update-pr-dashboard.js');
-            await updateDashboard({ github, context });
+          path: summaries/
+        continue-on-error: true
 
-      - name: Check for failures
+      - name: Aggregate and update PR body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          CORRECTNESS_RESULT: ${{ needs.correctness.result }}
+          SECURITY_RESULT: ${{ needs.security.result }}
+          QUALITY_DEPTH_RESULT: ${{ needs['quality-depth'].result }}
+        run: .github/scripts/aggregate-review.sh
+
+      - name: Report final status
         run: |
-          if echo '${{ toJSON(needs) }}' | grep -q '\"result\":\"failure\"'; then
-            echo "One or more review jobs failed. Check the job logs above."
+          if echo '${{ toJSON(needs) }}' | grep -q '"result":"failure"'; then
+            echo "One or more review jobs failed."
             exit 1
           fi
