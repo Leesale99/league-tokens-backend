@@ -1,11 +1,5 @@
 name: Review — Security & Dependencies
 
-permissions:
-  contents: read
-  issues: read
-  pull-requests: write
-  actions: read
-
 on:
   workflow_call:
     secrets:
