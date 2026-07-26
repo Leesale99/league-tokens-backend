@@ -8,7 +8,7 @@ permissions:
 
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [opened, reopened, labeled, unlabeled]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -24,7 +24,10 @@ concurrency:
 jobs:
   quality:
     name: Review — Quality
-    if: ${{ !endsWith(github.actor, '[bot]') }}
+    if: |
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     uses: ./.github/workflows/review-quality.yml
     with:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -36,7 +39,10 @@ jobs:
 
   correctness:
     name: Review — Correctness
-    if: ${{ !endsWith(github.actor, '[bot]') }}
+    if: |
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     uses: ./.github/workflows/review-correctness.yml
     with:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -48,7 +54,10 @@ jobs:
 
   security:
     name: Review — Security & Dependencies
-    if: ${{ !endsWith(github.actor, '[bot]') }}
+    if: |
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     uses: ./.github/workflows/review-security.yml
     with:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -60,7 +69,10 @@ jobs:
 
   quality-depth:
     name: Review — Tests, Performance & Observability
-    if: ${{ !endsWith(github.actor, '[bot]') }}
+    if: |
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     uses: ./.github/workflows/review-quality-depth.yml
     with:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -73,7 +85,11 @@ jobs:
   aggregate-and-report:
     name: Aggregate Reviews & Report
     needs: [quality, correctness, security, quality-depth]
-    if: ${{ always() && github.event_name == 'pull_request' && !endsWith(github.event.pull_request.user.login, '[bot]') }}
+    if: |
+      always() &&
+      !endsWith(github.actor, '[bot]') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
