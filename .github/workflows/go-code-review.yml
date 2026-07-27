@@ -1,14 +1,12 @@
-name: Go Code Review (OpenCode)
+# Orchestrates parallel AI code reviews on PR open/reopen/sync.
+# Each matrix entry runs a separate focus (quality, correctness, etc.)
+# via the shared review.yml reusable workflow.
 
-permissions:
-  contents: read
-  issues: read
-  pull-requests: write
-  actions: read
+name: Go Code Review (OpenCode)
 
 on:
   pull_request:
-    types: [opened, reopened, labeled, unlabeled]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -16,80 +14,64 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+  actions: read
 
 concurrency:
   group: opencode-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Review — Quality
+  # Map each review focus to its model, skills, and prompt file
+  review:
+    name: ${{ matrix.job_name }}
     if: |
       !endsWith(github.actor, '[bot]') &&
-      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
-      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
-    uses: ./.github/workflows/review-quality.yml
+      !contains(github.event.pull_request.labels.*.name, 'no-review')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - focus: quality
+            model: opencode-go/deepseek-v4-pro
+            skills: golang-code-style,golang-naming,golang-documentation
+            job_name: Review — Quality
+          - focus: correctness
+            model: opencode-go/deepseek-v4-flash
+            skills: golang-error-handling,golang-safety,golang-concurrency
+            job_name: Review — Correctness
+          - focus: security
+            model: opencode-go/deepseek-v4-flash
+            skills: golang-security,golang-dependency-management
+            job_name: Review — Security & Dependencies
+          - focus: quality-depth
+            model: opencode-go/deepseek-v4-pro
+            skills: golang-testing,golang-performance,golang-observability,golang-modernize
+            job_name: Review — Tests, Performance & Observability
+    uses: ./.github/workflows/review.yml
     with:
-      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-      REPO: ${{ github.repository }}
-      WORKFLOW_RUN_ID: ${{ github.run_id }}
+      focus: ${{ matrix.focus }}
+      model: ${{ matrix.model }}
+      skills: ${{ matrix.skills }}
+      job_name: ${{ matrix.job_name }}
+      pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
+      repo: ${{ github.repository }}
+      workflow_run_id: ${{ github.run_id }}
     secrets:
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      opencode_api_key: ${{ secrets.OPENCODE_API_KEY }}
+      gh_token: ${{ secrets.GITHUB_TOKEN }}
 
-  correctness:
-    name: Review — Correctness
-    if: |
-      !endsWith(github.actor, '[bot]') &&
-      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
-      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
-    uses: ./.github/workflows/review-correctness.yml
-    with:
-      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-      REPO: ${{ github.repository }}
-      WORKFLOW_RUN_ID: ${{ github.run_id }}
-    secrets:
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  security:
-    name: Review — Security & Dependencies
-    if: |
-      !endsWith(github.actor, '[bot]') &&
-      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
-      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
-    uses: ./.github/workflows/review-security.yml
-    with:
-      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-      REPO: ${{ github.repository }}
-      WORKFLOW_RUN_ID: ${{ github.run_id }}
-    secrets:
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  quality-depth:
-    name: Review — Tests, Performance & Observability
-    if: |
-      !endsWith(github.actor, '[bot]') &&
-      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
-      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
-    uses: ./.github/workflows/review-quality-depth.yml
-    with:
-      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-      REPO: ${{ github.repository }}
-      WORKFLOW_RUN_ID: ${{ github.run_id }}
-    secrets:
-      OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+  # Aggregate all review summaries into the PR description
   aggregate-and-report:
     name: Aggregate Reviews & Report
-    needs: [quality, correctness, security, quality-depth]
+    needs: [review]
     if: |
       always() &&
       !endsWith(github.actor, '[bot]') &&
-      !contains(github.event.pull_request.labels.*.name, 'no-review') &&
-      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'no-review')
+      !contains(github.event.pull_request.labels.*.name, 'no-review')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -105,11 +87,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          QUALITY_RESULT: ${{ needs.quality.result }}
-          CORRECTNESS_RESULT: ${{ needs.correctness.result }}
-          SECURITY_RESULT: ${{ needs.security.result }}
-          QUALITY_DEPTH_RESULT: ${{ needs['quality-depth'].result }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: .github/scripts/aggregate-review.sh
 
       - name: Report final status

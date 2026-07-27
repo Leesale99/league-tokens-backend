@@ -1,27 +1,32 @@
 #!/usr/bin/env bash
+# Aggregates review summaries from parallel review matrix jobs into the
+# PR description. Replaces everything between <!-- review-summary-start -->
+# and <!-- review-summary-end --> markers. On first run, injects the section.
+# Matrix instance results aren't addressable from the aggregate job, so
+# status is derived from whether each summary artifact exists.
 set -euo pipefail
 
-RESULTS="## Code Review Results
-| Review | Status |
-|--------|--------|
-| Quality | ${QUALITY_RESULT:-skipped} |
-| Correctness | ${CORRECTNESS_RESULT:-skipped} |
-| Security | ${SECURITY_RESULT:-skipped} |
-| Quality Depth | ${QUALITY_DEPTH_RESULT:-skipped} |
+RESULTS="<!-- review-summary-start -->
+
+## AI Review Summary
 
 "
+total_foci=0
+passed_foci=0
 
-for review in quality correctness security quality-depth; do
-  filename="${review}-review-summary"
-  summary_file="summaries/${filename}/${filename}.md"
+for focus in quality correctness security quality-depth; do
+  total_foci=$((total_foci + 1))
+  # Artifact name is ${focus}-summary, file inside is ${focus}-review-summary.md
+  summary_file="summaries/${focus}-summary/${focus}-review-summary.md"
 
   RESULTS+="<details>
-<summary>${review^} Review Summary</summary>
+<summary>${focus^} Review Summary</summary>
 
 "
   if [ -f "$summary_file" ]; then
     RESULTS+="$(cat "$summary_file")
 "
+    passed_foci=$((passed_foci + 1))
   else
     RESULTS+="No review summary available.
 "
@@ -31,10 +36,18 @@ for review in quality correctness security quality-depth; do
 "
 done
 
-RESULTS+="<!-- end-review -->"
+RESULTS+="**${passed_foci}/${total_foci}** review foci completed successfully.
+
+<!-- review-summary-end -->"
 
 current_body=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json body -q '.body')
-clean_body=$(echo "$current_body" | sed '/^## Code Review Results/,/^<!-- end-review -->$/d')
+
+# Replace content between markers, or append if markers don't exist yet
+if echo "$current_body" | grep -q '<!-- review-summary-start -->'; then
+  clean_body=$(echo "$current_body" | sed '/<!-- review-summary-start -->/,/<!-- review-summary-end -->/d')
+else
+  clean_body="$current_body"
+fi
 
 gh pr edit "$PR_NUMBER" --repo "$REPO" --body "${clean_body}
 
