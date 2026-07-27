@@ -21,10 +21,11 @@ case "$ACTION" in
       CURRENT_SHA=$(git rev-parse HEAD)
       if [ "$LAST_SHA" != "$CURRENT_SHA" ]; then
         DIFF=$(git diff "$LAST_SHA..$CURRENT_SHA")
+        DELIM="DIFF_END_${RANDOM}${RANDOM}"
         {
-          echo 'INCREMENTAL_DIFF<<DIFF_EOF'
+          echo "INCREMENTAL_DIFF<<${DELIM}"
           echo "$DIFF"
-          echo 'DIFF_EOF'
+          echo "${DELIM}"
         } >> "$GITHUB_ENV"
       fi
     fi

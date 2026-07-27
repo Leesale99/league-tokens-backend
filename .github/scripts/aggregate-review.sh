@@ -6,7 +6,6 @@
 set -euo pipefail
 
 FOCI=("quality" "correctness" "security" "quality-depth")
-FOCI_LABELS=("Quality" "Correctness" "Security" "Quality Depth")
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -25,7 +24,11 @@ section_lines() {
 }
 
 # Count non-empty, non-"None" lines in section output
-count_items() { grep -c '^- \[' 2>/dev/null || echo 0; }
+count_items() {
+  local c
+  c=$(grep -c '^- \[' 2>/dev/null) || c=0
+  echo "$c"
+}
 
 # ── Compute review effort from PR diff stats ─────────────────────────
 
