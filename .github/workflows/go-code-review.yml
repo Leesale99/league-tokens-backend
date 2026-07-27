@@ -61,7 +61,7 @@ jobs:
       repo: ${{ github.repository }}
       workflow_run_id: ${{ github.run_id }}
     secrets:
-      opencode_api_key: ${{ secrets.OPENCODE_API_KEY }}
+      opencode_api_key: ${{ secrets.OPENCODE_GO_API_KEY }}
       gh_token: ${{ secrets.GITHUB_TOKEN }}
 
   # Aggregate all review summaries into the PR description

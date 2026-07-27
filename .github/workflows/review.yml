@@ -103,16 +103,16 @@ jobs:
           FILE="/tmp/${{ inputs.focus }}-review-summary.md"
           if [ ! -f "$FILE" ]; then
             LABEL="${{ inputs.job_name }}"
-            if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ]; then
-              echo "# ${LABEL} — Time Limit Reached" > "$FILE"
-              echo "" >> "$FILE"
-              echo "The review exceeded its 20-minute time limit." >> "$FILE"
-              echo "::warning::${LABEL} timed out — placeholder summary created."
-            else
+            if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ] || \
+               [ "${{ steps.opencode-review.outcome }}" = "failure" ]; then
               echo "# ${LABEL} — Failed" > "$FILE"
               echo "" >> "$FILE"
-              echo "The review encountered an error." >> "$FILE"
-              echo "::warning::${LABEL} failed — placeholder summary created."
+              echo "The review did not complete. Check the workflow logs for details." >> "$FILE"
+              echo "::warning::${LABEL} did not complete — placeholder summary created."
+            else
+              echo "# ${LABEL} — Skipped" > "$FILE"
+              echo "" >> "$FILE"
+              echo "The review was skipped." >> "$FILE"
             fi
           fi
 
