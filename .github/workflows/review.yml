@@ -29,6 +29,11 @@ on:
       workflow_run_id:
         required: true
         type: string
+      existing_comments:
+        required: false
+        type: string
+        default: ""
+        description: JSON array of {path, line} from dismissed-outdated comments
     secrets:
       opencode_api_key:
         required: true
@@ -48,6 +53,7 @@ jobs:
       PR_NUMBER: ${{ inputs.pr_number }}
       REPO: ${{ inputs.repo }}
       WORKFLOW_RUN_ID: ${{ inputs.workflow_run_id }}
+      EXISTING_COMMENTS: ${{ inputs.existing_comments }}
       # Restrict agent to read-only bash + /tmp writes
       OPENCODE_PERMISSION: >-
         {"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow",

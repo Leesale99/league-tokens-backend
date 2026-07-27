@@ -25,9 +25,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Phase 2: Dismiss outdated bot comments before re-review
+  dismiss-outdated:
+    if: |
+      !endsWith(github.actor, '[bot]') && (
+        (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
+         !contains(github.event.pull_request.labels.*.name, 'no-review'))
+        ||
+        (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      existing_comments: ${{ steps.dismiss.outputs.existing_comments }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: dismiss
+        run: .github/scripts/dismiss-outdated-reviews.sh \
+          ${{ github.event.pull_request.number || inputs.pr_number }} \
+          ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # Map each review focus to its model, skills, and prompt file
   review:
     name: ${{ matrix.job_name }}
+    needs: [dismiss-outdated]
     # Label event logic:
     #   unlabeled no-review → run (reviews re-enabled)
     #   labeled no-review → skip (reviews disabled)
@@ -38,7 +65,7 @@ jobs:
       !endsWith(github.actor, '[bot]') && (
         (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
          !contains(github.event.pull_request.labels.*.name, 'no-review'))
-
+        ||
         (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
       )
     strategy:
@@ -70,6 +97,7 @@ jobs:
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       repo: ${{ github.repository }}
       workflow_run_id: ${{ github.run_id }}
+      existing_comments: ${{ needs.dismiss-outdated.outputs.existing_comments }}
     secrets:
       opencode_api_key: ${{ secrets.OPENCODE_GO_API_KEY }}
       gh_token: ${{ secrets.GITHUB_TOKEN }}

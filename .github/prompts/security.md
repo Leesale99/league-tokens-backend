@@ -20,6 +20,16 @@ If the `INCREMENTAL_DIFF` env var is set to a non-empty value:
 
 The INCREMENTAL_DIFF is a git diff of new changes since the last review.
 
+## Existing comments to skip
+
+If the `EXISTING_COMMENTS` env var is set and non-empty, it is a
+JSON array of `{"path": "file.go", "line": 42}` pairs. Skip posting
+a new review comment on any (path, line) pair found in this list.
+
+The agent has already dismissed stale comments in a pre-step — only
+the non-dismissed comments are in this list. This prevents duplicate
+flags across review runs.
+
 ## Context
 
 The PR branch is already checked out.
