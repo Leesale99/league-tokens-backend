@@ -10,11 +10,11 @@ REPO="$2"
 
 BASE_BRANCH=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json baseRefName -q '.baseRefName' 2>/dev/null || echo "main")
 
-# Fetch all bot comments
+# Fetch all bot comments (resilient to API errors, transient 404s, rate limits)
 comments=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate \
-  --jq 'map(select(.user.login | endswith("[bot]") and .line != null))')
+  --jq 'map(select(.user.login | endswith("[bot]") and .line != null))' 2>/dev/null || echo "[]")
 
-count=$(echo "$comments" | jq 'length')
+count=$(echo "$comments" | jq 'length' 2>/dev/null || echo 0)
 if [ "$count" -eq 0 ]; then
   echo "existing_comments=[]" >> "$GITHUB_OUTPUT"
   echo "dismissed=0" >> "$GITHUB_OUTPUT"
