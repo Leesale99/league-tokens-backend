@@ -96,6 +96,26 @@ The `side` field must be "RIGHT" for lines in the PR diff.
 - 🟠 **IMPORTANT** — missing test on a critical path; allocation hot-spot on a latency-sensitive path
 - 🟡 **SUGGESTION** — observability gap, modernization opportunity, minor test improvement
 
+## Summary file format
+
+After posting the review, write to /tmp/quality-depth-review-summary.md
+using this exact structure:
+
+## Quality-Depth Review
+
+<2–3 paragraph free-text summary of test coverage, performance
+concerns, observability gaps, and modernization opportunities.>
+
+### 🟠 Important
+- [ ] `<path>:<line>` — <one-line description>
+
+### 🟡 Suggestion
+- [ ] `<path>:<line>` — <one-line description>
+
+If no findings in a severity tier, write "None" on its own line.
+File paths must be relative to repo root. Lines must be the
+right-side line number from the PR diff.
+
 ## Efficiency
 
 - Batch ALL context reads (AGENTS.md, CONTEXT.md, docs/agents/domain.md, PR diff) in ONE batch of tool calls — do not read them one at a time.

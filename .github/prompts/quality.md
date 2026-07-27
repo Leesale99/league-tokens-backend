@@ -91,6 +91,29 @@ JSONEOF
 The `body` field is optional — omit it if all findings are inline.
 The `side` field must be "RIGHT" for lines in the PR diff.
 
+## Summary file format
+
+After posting the review, write to /tmp/quality-review-summary.md
+using this exact structure:
+
+## Quality Review
+
+<2–3 paragraph free-text summary of overall code quality, patterns,
+and general impression.>
+
+### 🔴 Blocking
+- [ ] `<path>:<line>` — <one-line description>
+
+### 🟠 Important
+- [ ] `<path>:<line>` — <one-line description>
+
+### 🟡 Suggestion
+- [ ] `<path>:<line>` — <one-line description>
+
+If no findings in a severity tier, write "None" on its own line.
+File paths must be relative to repo root. Lines must be the
+right-side line number from the PR diff.
+
 ## Efficiency
 
 - Batch ALL context reads (AGENTS.md, CONTEXT.md, docs/agents/domain.md, PR diff) in ONE batch of tool calls — do not read them one at a time.
