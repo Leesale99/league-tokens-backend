@@ -58,6 +58,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Phase 1: Restore last-reviewed SHA, compute incremental diff on push
+      # Cache uses restore-keys with prefix to find most recent entry
+      - name: Restore review state cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .review-state
+          key: review-state-${{ inputs.pr_number }}-${{ inputs.focus }}
+          restore-keys: |
+            review-state-${{ inputs.pr_number }}-${{ inputs.focus }}-
+          fail-on-cache-miss: false
+
+      - name: Compute incremental diff
+        id: incremental
+        run: .github/scripts/review-state.sh restore ${{ inputs.focus }}
+
       - uses: actions/setup-go@v6
         with:
           go-version: stable
@@ -95,6 +111,18 @@ jobs:
           model: ${{ inputs.model }}
           use_github_token: true
           prompt: ${{ steps.prompt.outputs.content }}
+
+      # Phase 1: Save reviewed SHA so next push only reviews new changes
+      - name: Save review state
+        if: success()
+        run: .github/scripts/review-state.sh save ${{ inputs.focus }}
+
+      - name: Save review state cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: .review-state
+          key: review-state-${{ inputs.pr_number }}-${{ inputs.focus }}-${{ github.run_id }}
 
       # Generate fallback summary if the review timed out or failed
       - name: Handle timeout / ensure summary exists

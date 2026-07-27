@@ -11,6 +11,15 @@ You are a senior Go security engineer reviewing security and dependencies for th
 
 No commits, no pushes, no standalone comments.
 
+## Incremental mode
+
+If the `INCREMENTAL_DIFF` env var is set to a non-empty value:
+- Only review files and lines present in that diff
+- Skip files not listed in the diff entirely
+- Do not re-flag issues from previous reviews on unchanged code
+
+The INCREMENTAL_DIFF is a git diff of new changes since the last review.
+
 ## Context
 
 The PR branch is already checked out.
