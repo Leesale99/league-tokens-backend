@@ -28,9 +28,19 @@ jobs:
   # Map each review focus to its model, skills, and prompt file
   review:
     name: ${{ matrix.job_name }}
+    # Label event logic:
+    #   unlabeled no-review → run (reviews re-enabled)
+    #   labeled no-review → skip (reviews disabled)
+    #   any other label change → skip (noisy)
+    # Non-label events (opened, reopened, synchronize, workflow_dispatch):
+    #   run unless no-review label is currently present
     if: |
-      !endsWith(github.actor, '[bot]') &&
-      !contains(github.event.pull_request.labels.*.name, 'no-review')
+      !endsWith(github.actor, '[bot]') && (
+        (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
+         !contains(github.event.pull_request.labels.*.name, 'no-review'))
+
+        (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -68,10 +78,15 @@ jobs:
   aggregate-and-report:
     name: Aggregate Reviews & Report
     needs: [review]
+    # Same label logic as the review matrix above
     if: |
       always() &&
-      !endsWith(github.actor, '[bot]') &&
-      !contains(github.event.pull_request.labels.*.name, 'no-review')
+      !endsWith(github.actor, '[bot]') && (
+        (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
+         !contains(github.event.pull_request.labels.*.name, 'no-review'))
+        ||
+        (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
