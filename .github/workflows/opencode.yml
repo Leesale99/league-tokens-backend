@@ -16,12 +16,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  opencode:
+  pi-agent:
     if: |
-      contains(github.event.comment.body, ' /oc') ||
-      startsWith(github.event.comment.body, '/oc') ||
-      contains(github.event.comment.body, ' /opencode') ||
-      startsWith(github.event.comment.body, '/opencode')
+      contains(github.event.comment.body, ' /code') ||
+      startsWith(github.event.comment.body, '/code')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -43,9 +41,19 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: opencode-go/deepseek-v4-flash
-          variant: minimal
-          use_github_token: true
+          github_token: ${{ secrets.CODE_BOT_PAT }}
+          provider: oc-sdk-go
+          model: oc-sdk-go/deepseek-v4-flash
+          token: ${{ secrets.OPENCODE_GO_API_KEY }}
+          trigger: /code
+          extensions: |
+            npm:pi-opencode-bridge
+          loaded_tools: |
+            get_pr_diff
+            get_issue_or_pr_thread
+            create_pull_request_review
+            create_pull_request
+            update_pull_request
           prompt: |
             When responding to a /oc or /opencode command, reply directly in the
             comment thread where the command was issued — do not create a new

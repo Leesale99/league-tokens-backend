@@ -1,7 +1,3 @@
-# Reusable review workflow — replaces review-quality, review-correctness,
-# review-security, and review-quality-depth.
-# Called by go-code-review.yml via matrix with different focus/model/skills.
-
 name: Review
 
 on:
@@ -39,6 +35,8 @@ on:
         required: true
       gh_token:
         required: true
+      code_bot_pat:
+        required: true
 
 jobs:
   review:
@@ -48,24 +46,16 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      OPENCODE_API_KEY: ${{ secrets.opencode_api_key }}
       GITHUB_TOKEN: ${{ secrets.gh_token }}
       PR_NUMBER: ${{ inputs.pr_number }}
       REPO: ${{ inputs.repo }}
       WORKFLOW_RUN_ID: ${{ inputs.workflow_run_id }}
       EXISTING_COMMENTS: ${{ inputs.existing_comments }}
-      # Restrict agent to read-only bash + /tmp writes
-      OPENCODE_PERMISSION: >-
-        {"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow",
-        "gh pr diff*": "allow", "gh pr view*": "allow", "gh api*": "allow"},
-        "external_directory": { "/tmp/*": "allow" }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      # Phase 1: Restore last-reviewed SHA, compute incremental diff on push
-      # Cache uses restore-keys with prefix to find most recent entry
       - name: Restore review state cache
         id: cache-restore
         uses: actions/cache/restore@v4
@@ -84,24 +74,18 @@ jobs:
         with:
           go-version: stable
 
-      # npx skills add requires Node.js
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Install Go review skills
         run: |
-          SKILL_ARGS=$(echo "${{ inputs.skills }}" | tr ',' '\n' | sed 's/^/--skill /' | paste -sd' ')
-          for i in 1 2 3; do
-            npx skills add https://github.com/samber/cc-skills-golang \
-              -a opencode $SKILL_ARGS -y --copy && break
-            sleep 10
+          git clone --depth 1 https://github.com/samber/cc-skills-golang.git /tmp/cc-skills-golang
+          mkdir -p .pi/skills
+          for SKILL in $(echo "${{ inputs.skills }}" | tr ',' ' '); do
+            cp -r "/tmp/cc-skills-golang/skills/$SKILL" ".pi/skills/"
           done
-
-      - name: Configure git
-        run: |
-          git config --global user.email "opencode[bot]@users.noreply.github.com"
-          git config --global user.name "opencode[bot]"
+          rm -rf /tmp/cc-skills-golang
 
       - name: Read review prompt
         id: prompt
@@ -110,15 +94,27 @@ jobs:
           cat ".github/prompts/${{ inputs.focus }}.md" >> "$GITHUB_OUTPUT"
           echo 'PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
 
-      - id: opencode-review
-        uses: anomalyco/opencode/github@latest
+      - id: pi
+        uses: shaftoe/pi-coding-agent-action@v2
         timeout-minutes: 20
         with:
+          github_token: ${{ secrets.code_bot_pat }}
+          provider: oc-sdk-go
           model: ${{ inputs.model }}
-          use_github_token: true
+          token: ${{ secrets.opencode_api_key }}
+          extensions: |
+            npm:pi-opencode-bridge
+          loaded_tools: |
+            get_pr_diff
+            get_issue_or_pr_thread
+            create_pull_request_review
+          auto_compaction: true
           prompt: ${{ steps.prompt.outputs.content }}
 
-      # Phase 1: Save reviewed SHA so next push only reviews new changes
+      - name: Save review summary
+        run: |
+          echo '${{ steps.pi.outputs.response }}' > /tmp/${{ inputs.focus }}-review-summary.md
+
       - name: Save review state
         if: success()
         run: .github/scripts/review-state.sh save ${{ inputs.focus }}
@@ -130,15 +126,14 @@ jobs:
           path: .review-state
           key: review-state-${{ inputs.pr_number }}-${{ inputs.focus }}-${{ github.run_id }}
 
-      # Generate fallback summary if the review timed out or failed
       - name: Handle timeout / ensure summary exists
         if: always()
         run: |
           FILE="/tmp/${{ inputs.focus }}-review-summary.md"
           if [ ! -f "$FILE" ]; then
             LABEL="${{ inputs.job_name }}"
-            if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ] || \
-               [ "${{ steps.opencode-review.outcome }}" = "failure" ]; then
+            if [ "${{ steps.pi.outcome }}" = "cancelled" ] || \
+               [ "${{ steps.pi.outcome }}" = "failure" ]; then
               echo "# ${LABEL} — Failed" > "$FILE"
               echo "" >> "$FILE"
               echo "The review did not complete. Check the workflow logs for details." >> "$FILE"

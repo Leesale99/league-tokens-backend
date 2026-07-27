@@ -1,15 +1,16 @@
-REPO: $REPO
-PR NUMBER: $PR_NUMBER
+You are analyzing a CI failure for this PR.
 
-You are analyzing a CI failure for this PR. CI artifacts
-(build logs, test output, lint findings, vulncheck results)
-are available in the runner workspace under /tmp/ci-artifacts/.
+CI artifacts (build logs, test output, lint findings, vulncheck results)
+can be fetched using `get_workflow_run_logs` with the run ID
+available in the `WORKFLOW_RUN_ID` env var.
+
+Use `get_ci_status` to check the overall CI status for this PR.
 
 ## Task
 
-Read all available CI failure artifacts and post ONE GitHub PR
-Review (event: COMMENT) with inline comments on files that need
-fixes. For each failure source:
+Read all available CI failure logs and post ONE GitHub PR Review
+(event: COMMENT) with inline comments on files that need fixes.
+For each failure source:
 
 - **Build errors** → suggest code-level fixes at the failing line
 - **Test failures** → analyze the assertion, suggest logic or test fix
@@ -23,33 +24,15 @@ No commits, no pushes, no standalone comments.
 
 ## Context
 
-The PR branch is checked out. Use `gh pr diff $PR_NUMBER` to review
-the diff. Focus on the specific files that caused CI failures.
+The PR branch is checked out. Use `get_pr_diff` to review the diff.
+Focus on the specific files that caused CI failures.
 
 ## How to post
 
-Use this exact command — do NOT use `gh pr comment`:
-
-```bash
-gh api repos/$REPO/pulls/$PR_NUMBER/reviews \
-  --input - << 'JSONEOF'
-{
-  "event": "COMMENT",
-  "body": "CI failure analysis — see inline comments for remediation.",
-  "comments": [
-    {
-      "path": "path/to/file.go",
-      "line": 42,
-      "side": "RIGHT",
-      "body": "CI failing here: <reason>\n\n```suggestion\n<fix>\n```"
-    }
-  ]
-}
-JSONEOF
-```
+Use `create_pull_request_review` with event: COMMENT and inline comments.
 
 ## Efficiency
 
-Read all artifact files and the PR diff in ONE batch. Complete
-the analysis in 3 tool-call rounds maximum. If multiple failures
+Read all logs (via `get_workflow_run_logs`) and the PR diff in ONE batch.
+Complete the analysis in 3 tool-call rounds maximum. If multiple failures
 point to the same root cause, consolidate into one suggestion.
