@@ -1,0 +1,160 @@
+# Reusable review workflow — replaces review-quality, review-correctness,
+# review-security, and review-quality-depth.
+# Called by go-code-review.yml via matrix with different focus/model/skills.
+
+name: Review
+
+on:
+  workflow_call:
+    inputs:
+      focus:
+        required: true
+        type: string
+      model:
+        required: true
+        type: string
+      skills:
+        required: true
+        type: string
+        description: Comma-separated skill names for this review focus
+      job_name:
+        required: true
+        type: string
+      pr_number:
+        required: true
+        type: string
+      repo:
+        required: true
+        type: string
+      workflow_run_id:
+        required: true
+        type: string
+      existing_comments:
+        required: false
+        type: string
+        default: ""
+        description: JSON array of {path, line} from dismissed-outdated comments
+    secrets:
+      opencode_api_key:
+        required: true
+      gh_token:
+        required: true
+
+jobs:
+  review:
+    name: ${{ inputs.job_name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      OPENCODE_API_KEY: ${{ secrets.opencode_api_key }}
+      GITHUB_TOKEN: ${{ secrets.gh_token }}
+      PR_NUMBER: ${{ inputs.pr_number }}
+      REPO: ${{ inputs.repo }}
+      WORKFLOW_RUN_ID: ${{ inputs.workflow_run_id }}
+      EXISTING_COMMENTS: ${{ inputs.existing_comments }}
+      # Restrict agent to read-only bash + /tmp writes
+      OPENCODE_PERMISSION: >-
+        {"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow",
+        "gh pr diff*": "allow", "gh pr view*": "allow", "gh api*": "allow"},
+        "external_directory": { "/tmp/*": "allow" }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # Phase 1: Restore last-reviewed SHA, compute incremental diff on push
+      # Cache uses restore-keys with prefix to find most recent entry
+      - name: Restore review state cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .review-state
+          key: review-state-${{ inputs.pr_number }}-${{ inputs.focus }}
+          restore-keys: |
+            review-state-${{ inputs.pr_number }}-${{ inputs.focus }}-
+          fail-on-cache-miss: false
+
+      - name: Compute incremental diff
+        id: incremental
+        run: .github/scripts/review-state.sh restore ${{ inputs.focus }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      # npx skills add requires Node.js
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install Go review skills
+        run: |
+          SKILL_ARGS=$(echo "${{ inputs.skills }}" | tr ',' '\n' | sed 's/^/--skill /' | paste -sd' ')
+          for i in 1 2 3; do
+            npx skills add https://github.com/samber/cc-skills-golang \
+              -a opencode $SKILL_ARGS -y --copy && break
+            sleep 10
+          done
+
+      - name: Configure git
+        run: |
+          git config --global user.email "opencode[bot]@users.noreply.github.com"
+          git config --global user.name "opencode[bot]"
+
+      - name: Read review prompt
+        id: prompt
+        run: |
+          echo 'content<<PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
+          cat ".github/prompts/${{ inputs.focus }}.md" >> "$GITHUB_OUTPUT"
+          echo 'PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
+
+      - id: opencode-review
+        uses: anomalyco/opencode/github@latest
+        timeout-minutes: 20
+        with:
+          model: ${{ inputs.model }}
+          use_github_token: true
+          prompt: ${{ steps.prompt.outputs.content }}
+
+      # Phase 1: Save reviewed SHA so next push only reviews new changes
+      - name: Save review state
+        if: success()
+        run: .github/scripts/review-state.sh save ${{ inputs.focus }}
+
+      - name: Save review state cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: .review-state
+          key: review-state-${{ inputs.pr_number }}-${{ inputs.focus }}-${{ github.run_id }}
+
+      # Generate fallback summary if the review timed out or failed
+      - name: Handle timeout / ensure summary exists
+        if: always()
+        run: |
+          FILE="/tmp/${{ inputs.focus }}-review-summary.md"
+          if [ ! -f "$FILE" ]; then
+            LABEL="${{ inputs.job_name }}"
+            if [ "${{ steps.opencode-review.outcome }}" = "cancelled" ] || \
+               [ "${{ steps.opencode-review.outcome }}" = "failure" ]; then
+              echo "# ${LABEL} — Failed" > "$FILE"
+              echo "" >> "$FILE"
+              echo "The review did not complete. Check the workflow logs for details." >> "$FILE"
+              echo "::warning::${LABEL} did not complete — placeholder summary created."
+            else
+              echo "# ${LABEL} — Skipped" > "$FILE"
+              echo "" >> "$FILE"
+              echo "The review was skipped." >> "$FILE"
+            fi
+          fi
+
+      - name: Upload review summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.focus }}-summary
+          path: /tmp/${{ inputs.focus }}-review-summary.md
+          if-no-files-found: ignore
+          retention-days: 1

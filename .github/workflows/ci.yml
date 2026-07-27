@@ -17,33 +17,58 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26"
 
+      # CI artifact directory — captured on failure for AI analysis
+      - run: mkdir -p /tmp/ci-artifacts
+
+      # Build & verify
       - name: Build
-        run: go build ./...
+        run: |
+          set -o pipefail
+          go build ./... 2>&1 | tee /tmp/ci-artifacts/build.log
 
       - name: Vet
-        run: go vet ./...
+        run: |
+          set -o pipefail
+          go vet ./... 2>&1 | tee /tmp/ci-artifacts/vet.log
 
+      # Unit tests
       - name: Test
-        run: go test ./...
+        run: |
+          set -o pipefail
+          go test ./... 2>&1 | tee /tmp/ci-artifacts/test.log
 
+      # Lint & static analysis
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@db9de0fc1a667e1a49d2291a1a042dff081d78f6 # v9
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
 
+      # Vulnerability scan
       - name: govulncheck
-        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        uses: golang/govulncheck-action@v1
         with:
           go-version-input: "1.26"
 
+      # Container build
       - name: Docker build
-        run: docker build -t league-tokens-backend .
+        run: |
+          set -o pipefail
+          docker build -t league-tokens-backend . 2>&1 | tee /tmp/ci-artifacts/docker.log
+
+      # Upload logs for CI failure analysis bridge
+      - name: Upload CI failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-logs
+          path: /tmp/ci-artifacts/
+          retention-days: 1
 

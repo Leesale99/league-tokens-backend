@@ -1,3 +1,7 @@
+# Slash-command bot: responds to /oc or /opencode on issues and PRs.
+# Unlike go-code-review.yml (auto-review), this is interactive — the user
+# explicitly asks for help and opencode may create branches + PRs.
+
 name: opencode
 
 on:
@@ -7,6 +11,7 @@ on:
     types: [created]
 
 concurrency:
+  # One queue per issue/PR to avoid conflicting agent instructions
   group: opencode-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: false
 
@@ -24,21 +29,13 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
+      # Git identity is required for the opencode handler's auto-commit
       - name: Configure git identity
         run: |
           git config user.name "opencode[bot]"
           git config user.email "opencode[bot]@users.noreply.github.com"
-
-      - name: Rebase onto latest remote
-        run: |
-          BRANCH=$(git rev-parse --abbrev-ref HEAD)
-          git fetch origin "$BRANCH" 2>/dev/null || true
-          if git rev-parse "origin/$BRANCH" >/dev/null 2>&1; then
-            git rebase "origin/$BRANCH"
-          fi
 
       - name: Run opencode
         uses: anomalyco/opencode/github@latest
@@ -50,8 +47,8 @@ jobs:
           variant: minimal
           use_github_token: true
           prompt: |
-            Always reply in the same thread — never create top-level comments.
-            You may be triggered on issues as well as pull requests. If you
-            successfully committed changes, reply with a few words summarizing
-            what was changed. If anything fails, reply with a summary of the
-            error and any relevant log output.
+            When responding to a /oc or /opencode command, reply directly in the
+            comment thread where the command was issued — do not create a new
+            top-level comment. Before posting, check if a previous bot comment
+            in the same thread already addresses this topic and update it instead
+            of creating a duplicate. Keep responses concise.

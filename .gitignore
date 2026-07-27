@@ -1,2 +1,5 @@
-# opencode review summaries (created by CI review workflows)
-*-review-summary.md
+# AI agent skills — installed at review time, never committed
+/.agents
+
+# Review state cache — used for incremental reviews on synchronize
+/.review-state
