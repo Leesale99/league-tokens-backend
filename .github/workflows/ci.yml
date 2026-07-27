@@ -25,16 +25,25 @@ jobs:
         with:
           go-version: "1.26"
 
+      # CI artifact directory — captured on failure for AI analysis
+      - run: mkdir -p /tmp/ci-artifacts
+
       # Build & verify
       - name: Build
-        run: go build ./...
+        run: |
+          set -o pipefail
+          go build ./... 2>&1 | tee /tmp/ci-artifacts/build.log
 
       - name: Vet
-        run: go vet ./...
+        run: |
+          set -o pipefail
+          go vet ./... 2>&1 | tee /tmp/ci-artifacts/vet.log
 
       # Unit tests
       - name: Test
-        run: go test ./...
+        run: |
+          set -o pipefail
+          go test ./... 2>&1 | tee /tmp/ci-artifacts/test.log
 
       # Lint & static analysis
       - name: golangci-lint
@@ -50,5 +59,16 @@ jobs:
 
       # Container build
       - name: Docker build
-        run: docker build -t league-tokens-backend .
+        run: |
+          set -o pipefail
+          docker build -t league-tokens-backend . 2>&1 | tee /tmp/ci-artifacts/docker.log
+
+      # Upload logs for CI failure analysis bridge
+      - name: Upload CI failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-logs
+          path: /tmp/ci-artifacts/
+          retention-days: 1
 
