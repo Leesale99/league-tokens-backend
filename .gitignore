@@ -1,6 +1,3 @@
-# opencode review summaries (created by CI review workflows)
-*-review-summary.md
-
 # AI agent skills — installed at review time, never committed
 /.agents
 
