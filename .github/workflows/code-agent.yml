@@ -1,8 +1,4 @@
-# Slash-command bot: responds to /oc or /opencode on issues and PRs.
-# Unlike go-code-review.yml (auto-review), this is interactive — the user
-# explicitly asks for help and opencode may create branches + PRs.
-
-name: opencode
+name: Code Agent
 
 on:
   issue_comment:
@@ -11,12 +7,11 @@ on:
     types: [created]
 
 concurrency:
-  # One queue per issue/PR to avoid conflicting agent instructions
-  group: opencode-${{ github.event.issue.number || github.event.pull_request.number }}
+  group: code-agent-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  pi-agent:
+  code-agent:
     if: |
       contains(github.event.comment.body, ' /code') ||
       startsWith(github.event.comment.body, '/code')
@@ -28,18 +23,15 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      # Git identity is required for the opencode handler's auto-commit
-      - name: Configure git identity
-        run: |
-          git config user.name "opencode[bot]"
-          git config user.email "opencode[bot]@users.noreply.github.com"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
 
-      - name: Run opencode
-        uses: anomalyco/opencode/github@latest
-        env:
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Code Agent
+        uses: shaftoe/pi-coding-agent-action@v2
         with:
           github_token: ${{ secrets.CODE_BOT_PAT }}
           provider: oc-sdk-go
@@ -55,7 +47,7 @@ jobs:
             create_pull_request
             update_pull_request
           prompt: |
-            When responding to a /oc or /opencode command, reply directly in the
+            When responding to a /code command, reply directly in the
             comment thread where the command was issued — do not create a new
             top-level comment. Before posting, check if a previous bot comment
             in the same thread already addresses this topic and update it instead

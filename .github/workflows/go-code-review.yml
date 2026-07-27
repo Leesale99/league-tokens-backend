@@ -1,8 +1,4 @@
-# Orchestrates parallel AI code reviews on PR open/reopen/sync.
-# Each matrix entry runs a separate focus (quality, correctness, etc.)
-# via the shared review.yml reusable workflow.
-
-name: Go Code Review (OpenCode)
+name: Go Code Review (Code Agent)
 
 on:
   pull_request:
@@ -21,11 +17,10 @@ permissions:
   actions: read
 
 concurrency:
-  group: pi-agent-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
+  group: code-agent-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
-  # Phase 2: Dismiss outdated bot comments before re-review
   dismiss-outdated:
     if: |
       !endsWith(github.actor, '[bot]') && (
@@ -51,16 +46,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Map each review focus to its model, skills, and prompt file
   review:
     name: ${{ matrix.job_name }}
     needs: [dismiss-outdated]
-    # Label event logic:
-    #   unlabeled no-review → run (reviews re-enabled)
-    #   labeled no-review → skip (reviews disabled)
-    #   any other label change → skip (noisy)
-    # Non-label events (opened, reopened, synchronize, workflow_dispatch):
-    #   run unless no-review label is currently present
     if: |
       !endsWith(github.actor, '[bot]') && (
         (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
@@ -73,20 +61,24 @@ jobs:
       matrix:
         include:
           - focus: quality
-            model: opencode-go/deepseek-v4-pro
+            model: oc-sdk-go/deepseek-v4-pro
             skills: golang-code-style,golang-naming,golang-documentation
+
             job_name: Review — Quality
           - focus: correctness
-            model: opencode-go/deepseek-v4-flash
+            model: oc-sdk-go/deepseek-v4-flash
             skills: golang-error-handling,golang-safety,golang-concurrency
+
             job_name: Review — Correctness
           - focus: security
-            model: opencode-go/deepseek-v4-flash
+            model: oc-sdk-go/deepseek-v4-flash
             skills: golang-security,golang-dependency-management
+
             job_name: Review — Security & Dependencies
           - focus: quality-depth
-            model: opencode-go/deepseek-v4-pro
+            model: oc-sdk-go/deepseek-v4-pro
             skills: golang-testing,golang-performance,golang-observability,golang-modernize
+
             job_name: Review — Tests, Performance & Observability
     uses: ./.github/workflows/review.yml
     with:
@@ -101,12 +93,11 @@ jobs:
     secrets:
       opencode_api_key: ${{ secrets.OPENCODE_GO_API_KEY }}
       gh_token: ${{ secrets.GITHUB_TOKEN }}
+      code_bot_pat: ${{ secrets.CODE_BOT_PAT }}
 
-  # Aggregate all review summaries into the PR description
   aggregate-and-report:
     name: Aggregate Reviews & Report
     needs: [review]
-    # Same label logic as the review matrix above
     if: |
       always() &&
       !endsWith(github.actor, '[bot]') && (
@@ -131,7 +122,7 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-        run: .github/scripts/aggregate-review.sh
+        run: .github/scripts/aggregate-review-summaries.sh
 
       - name: Report final status
         run: |
