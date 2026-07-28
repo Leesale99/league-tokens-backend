@@ -32,6 +32,8 @@ count_items() {
 
 # ── Compute review effort from PR diff stats ─────────────────────────
 
+GH_TOKEN_CLEAN=$(echo "$GH_TOKEN_CLEAN" | tr -d '[:space:]')
+
 compute_effort() {
   local add del files
   add=$1; del=$2; files=$3
@@ -52,7 +54,7 @@ BUILD="<!-- review-summary-start -->
 
 # — Review effort
 pr_json=$(curl -sSf \
-  -H "Authorization: Bearer $GH_TOKEN" \
+  -H "Authorization: Bearer $GH_TOKEN_CLEAN" \
   -H "Accept: application/vnd.github+json" \
   "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER" 2>/dev/null || echo '{}')
 
@@ -198,7 +200,7 @@ BUILD+="
 # ── Inject into PR body ──────────────────────────────────────────────
 
 current_body=$(curl -sSf \
-  -H "Authorization: Bearer $GH_TOKEN" \
+  -H "Authorization: Bearer $GH_TOKEN_CLEAN" \
   -H "Accept: application/vnd.github+json" \
   "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER" 2>/dev/null | jq -r '.body // ""') || current_body=""
 
@@ -211,7 +213,7 @@ else
 fi
 
 curl -sSf -X PATCH \
-  -H "Authorization: Bearer $GH_TOKEN" \
+  -H "Authorization: Bearer $GH_TOKEN_CLEAN" \
   -H "Accept: application/vnd.github+json" \
   -H "Content-Type: application/json" \
   "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER" \

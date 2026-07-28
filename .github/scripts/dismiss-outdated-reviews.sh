@@ -10,8 +10,9 @@ REPO="$2"
 BASE_BRANCH="${3:-main}"
 
 # Fetch all bot comments (using curl to avoid gh auth resolution issues)
+GH_TOKEN_CLEAN=$(echo "$GH_TOKEN" | tr -d '[:space:]')
 comments=$(curl -sSf \
-  -H "Authorization: Bearer $GH_TOKEN" \
+  -H "Authorization: Bearer $GH_TOKEN_CLEAN" \
   -H "Accept: application/vnd.github+json" \
   "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/comments?per_page=100" | \
   jq 'map(select(.user.login | endswith("[bot]") and .line != null))')
@@ -41,7 +42,7 @@ while read -r comment; do
     if git diff "origin/$BASE_BRANCH..HEAD" -- "$path" 2>/dev/null |
       grep -q "\+\b$line\b"; then
       curl -sSf -X DELETE \
-        -H "Authorization: Bearer $GH_TOKEN" \
+        -H "Authorization: Bearer $GH_TOKEN_CLEAN" \
         "https://api.github.com/repos/$REPO/pulls/comments/$id" 2>/dev/null || true
       dismissed=$((dismissed + 1))
       continue
