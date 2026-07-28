@@ -94,50 +94,35 @@ jobs:
           cat ".github/prompts/${{ inputs.focus }}.md" >> "$GITHUB_OUTPUT"
           echo 'PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
 
-      - name: Seed OpenCode model cache for pi-opencode-bridge
+      - name: Configure oc-sdk-go custom provider
         run: |
-          mkdir -p ~/.cache/opencode
-          cat > ~/.cache/opencode/models.json << 'MODELS_EOF'
+          mkdir -p ~/.pi/agent
+          cat > ~/.pi/agent/models.json << 'MODELS_EOF'
           {
-            "opencode-go": {
-              "id": "opencode-go",
-              "env": ["OPENCODE_API_KEY"],
-              "npm": "@ai-sdk/openai-compatible",
-              "api": "https://opencode.ai/zen/go/v1",
-              "name": "OpenCode Go",
-              "models": {
-                "deepseek-v4-pro": {
-                  "id": "deepseek-v4-pro",
-                  "name": "DeepSeek V4 Pro",
-                  "family": "deepseek-thinking",
-                  "reasoning": true,
-                  "reasoning_options": [{"type": "effort", "values": ["high", "max"]}],
-                  "tool_call": true,
-                  "interleaved": {"field": "reasoning_content"},
-                  "structured_output": true,
-                  "temperature": true,
-                  "release_date": "2026-04-24",
-                  "last_updated": "2026-04-24",
-                  "modalities": {"input": ["text"], "output": ["text"]},
-                  "limit": {"context": 1000000, "output": 384000},
-                  "cost": {"input": 0.435, "output": 0.87, "cache_read": 0.003625}
-                },
-                "deepseek-v4-flash": {
-                  "id": "deepseek-v4-flash",
-                  "name": "DeepSeek V4 Flash",
-                  "family": "deepseek-flash",
-                  "reasoning": true,
-                  "reasoning_options": [{"type": "effort", "values": ["high", "max"]}],
-                  "tool_call": true,
-                  "interleaved": {"field": "reasoning_content"},
-                  "structured_output": true,
-                  "temperature": true,
-                  "release_date": "2026-04-24",
-                  "last_updated": "2026-04-24",
-                  "modalities": {"input": ["text"], "output": ["text"]},
-                  "limit": {"context": 1000000, "output": 384000},
-                  "cost": {"input": 0.14, "output": 0.28, "cache_read": 0.0028}
-                }
+            "providers": {
+              "oc-sdk-go": {
+                "baseUrl": "https://opencode.ai/zen/go/v1",
+                "api": "openai-completions",
+                "models": [
+                  {
+                    "id": "deepseek-v4-pro",
+                    "name": "DeepSeek V4 Pro",
+                    "reasoning": true,
+                    "input": ["text"],
+                    "cost": {"input": 0.435, "output": 0.87, "cacheRead": 0.003625, "cacheWrite": 0},
+                    "contextWindow": 1000000,
+                    "maxTokens": 384000
+                  },
+                  {
+                    "id": "deepseek-v4-flash",
+                    "name": "DeepSeek V4 Flash",
+                    "reasoning": true,
+                    "input": ["text"],
+                    "cost": {"input": 0.14, "output": 0.28, "cacheRead": 0.0028, "cacheWrite": 0},
+                    "contextWindow": 1000000,
+                    "maxTokens": 384000
+                  }
+                ]
               }
             }
           }
@@ -151,8 +136,6 @@ jobs:
           provider: oc-sdk-go
           model: ${{ inputs.model }}
           token: ${{ secrets.opencode_api_key }}
-          extensions: |
-            npm:pi-opencode-bridge
           loaded_tools: |
             get_pr_diff
             get_issue_or_pr_thread
