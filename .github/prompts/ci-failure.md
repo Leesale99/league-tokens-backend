@@ -8,8 +8,23 @@ Use `get_ci_status` to check the overall CI status for this PR.
 
 ## Task
 
-Read all available CI failure logs and post ONE GitHub PR Review
-(event: COMMENT) with inline comments on files that need fixes.
+1. Read all available CI failure logs using `get_workflow_run_logs`.
+2. Read the diff using `get_pr_diff`.
+3. Post ONE GitHub PR Review using `create_pull_request_review` with event: COMMENT.
+   The review body must be EXACTLY `## CI Failure Analysis` — no other text.
+   All findings go as inline comments on the relevant code lines.
+
+No commits, no pushes, no standalone issue comments.
+
+## Output discipline (CRITICAL)
+
+- No preambles, no meta-commentary, no self-narration.
+- No "Let me check…", "Looking at…", "I see that…".
+- The only text you output after inline comments is the analysis.
+- Keep the final response concise — 3-5 sentences max.
+
+## Analysis
+
 For each failure source:
 
 - **Build errors** → suggest code-level fixes at the failing line
@@ -20,19 +35,27 @@ For each failure source:
 Use 🟡 SUGGESTION severity. Maximum 5 findings — prioritize build
 and test failures over lint and vulncheck.
 
-No commits, no pushes, no standalone comments.
-
 ## Context
 
-The PR branch is checked out. Use `get_pr_diff` to review the diff.
-Focus on the specific files that caused CI failures.
+The PR branch is checked out. Focus on the specific files that caused CI failures.
 
-## How to post
+## How to write comments
 
-Use `create_pull_request_review` with event: COMMENT and inline comments.
+Structure each inline comment as:
+
+🟡 SUGGESTION — title
+
+1-2 sentences: the problem, why it causes the failure.
+
+```suggestion
+corrected code
+```
+
+Use ```suggestion blocks when the fix is a direct code replacement.
+Tone: professional, constructive. Explain the "why", not just the "what".
 
 ## Efficiency
 
-Read all logs (via `get_workflow_run_logs`) and the PR diff in ONE batch.
-Complete the analysis in 3 tool-call rounds maximum. If multiple failures
-point to the same root cause, consolidate into one suggestion.
+- Read all logs and PR diff in ONE batch.
+- Complete the analysis in 3 tool-call rounds maximum. If multiple failures
+  point to the same root cause, consolidate into one suggestion.
