@@ -21,7 +21,9 @@ section_lines() {
 }
 
 count_items() {
-  grep -c '^- \[' 2>/dev/null || echo 0
+  local c
+  c=$(grep -c '^- \[' 2>/dev/null || true)
+  echo "${c:-0}"
 }
 
 compute_effort() {
