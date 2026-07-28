@@ -38,8 +38,10 @@ compute_effort() {
 
 # ── Merge helpers — same (path, line) across foci ─────────────────────
 # Uses temp files: one per severity bucket.
-# Format per line: "path:line␟focus|sev|desc"
-# (␟ is unit separator, | separates focus/severity/desc within a finding)
+# Format per line: "path:line<tab>focus|sev|desc"
+# (<tab> is entry separator, | separates focus/severity/desc within a finding)
+
+SEP=$'\t'
 
 BLOCKING_FILE=$(mktemp)
 IMPORTANT_FILE=$(mktemp)
@@ -90,13 +92,13 @@ parse_and_merge() {
   key="$path:$lineno"
 
   # Check if this key already has an entry in the merge file
-  existing=$(grep "^${key}␟" "$merge_file" 2>/dev/null || true)
+  existing=$(grep "^${key}${SEP}" "$merge_file" 2>/dev/null || true)
 
   if [ -n "$existing" ]; then
     # Append to existing entry
-    sed -i "s|^${key}␟.*|${existing}␟${focus}|${sev}|${desc}|" "$merge_file"
+    sed -i "s@^${key}${SEP}.*@${existing}${SEP}${focus}|${sev}|${desc}@" "$merge_file"
   else
-    echo "${key}␟${focus}|${sev}|${desc}" >> "$merge_file"
+    echo "${key}${SEP}${focus}|${sev}|${desc}" >> "$merge_file"
   fi
 }
 
@@ -124,13 +126,13 @@ emit_merged_section() {
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     local key combined path lineno
-    key=$(echo "$line" | cut -d'␟' -f1)
-    combined=$(echo "$line" | cut -d'␟' -f2-)
+    key=$(echo "$line" | cut -d "$SEP" -f1)
+    combined=$(echo "$line" | cut -d "$SEP" -f2-)
     path=$(echo "$key" | cut -d: -f1)
     lineno=$(echo "$key" | cut -d: -f2)
 
     local first=1 tags="" desc=""
-    # Split entries separated by ␟ into newlines, then parse each
+    # Split entries separated by tab into newlines, then parse each
     while IFS= read -r entry; do
       [ -z "$entry" ] && continue
       f=$(echo "$entry" | cut -d'|' -f1)
@@ -141,7 +143,7 @@ emit_merged_section() {
         first=0
       fi
       tags="${tags} *[$f ($s)]*"
-    done < <(echo "$combined" | tr '␟' '\n')
+    done < <(echo "$combined" | tr "$SEP" '\n')
 
     out+=("- [ ] \`${path}:${lineno}\` — ${desc}${tags}")
   done < "$f"
