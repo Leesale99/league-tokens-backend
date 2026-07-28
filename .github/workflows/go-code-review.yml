@@ -42,7 +42,8 @@ jobs:
       - id: dismiss
         run: .github/scripts/dismiss-outdated-reviews.sh \
           ${{ github.event.pull_request.number || inputs.pr_number }} \
-          ${{ github.repository }}
+          ${{ github.repository }} \
+          ${{ github.event.pull_request.base.ref || 'main' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

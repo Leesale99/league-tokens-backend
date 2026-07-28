@@ -7,8 +7,7 @@ set -euo pipefail
 
 PR_NUMBER="$1"
 REPO="$2"
-
-BASE_BRANCH=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json baseRefName -q '.baseRefName' 2>/dev/null || echo "main")
+BASE_BRANCH="${3:-main}"
 
 # Fetch all bot comments
 comments=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate \
