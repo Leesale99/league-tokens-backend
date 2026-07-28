@@ -37,12 +37,24 @@ compute_effort() {
 }
 
 # ── Merge helpers — same (path, line) across foci ─────────────────────
-#
-# MERGED[key] stores combined entry data for a (path,line) pair.
-# Key format: "path:line"
-# We'll store: "focus1|sev1|desc1␟focus2|sev2|desc2"
+# Uses temp files: one per severity bucket.
+# Format per line: "path:line␟focus|sev|desc"
 # (␟ is unit separator, | separates focus/severity/desc within a finding)
-declare -A MERGED_BLOCKING MERGED_IMPORTANT MERGED_SUGGESTION
+
+BLOCKING_FILE=$(mktemp)
+IMPORTANT_FILE=$(mktemp)
+SUGGESTION_FILE=$(mktemp)
+
+cleanup_merge_files() { rm -f "$BLOCKING_FILE" "$IMPORTANT_FILE" "$SUGGESTION_FILE"; }
+trap cleanup_merge_files EXIT
+
+merge_file_for_severity() {
+  case "$1" in
+    MERGED_BLOCKING)  echo "$BLOCKING_FILE" ;;
+    MERGED_IMPORTANT) echo "$IMPORTANT_FILE" ;;
+    MERGED_SUGGESTION) echo "$SUGGESTION_FILE" ;;
+  esac
+}
 
 parse_and_merge() {
   local focus=$1 line=$2 bucket_var=$3
@@ -73,30 +85,49 @@ parse_and_merge() {
     MERGED_SUGGESTION) sev="🟡" ;;
   esac
 
-  local key="$path:$lineno"
-  local -n bucket=$bucket_var
+  local merge_file key existing
+  merge_file=$(merge_file_for_severity "$bucket_var")
+  key="$path:$lineno"
 
-  if [ -n "${bucket[$key]:-}" ]; then
-    bucket[$key]="${bucket[$key]}␟${focus}|${sev}|${desc}"
+  # Check if this key already has an entry in the merge file
+  existing=$(grep "^${key}␟" "$merge_file" 2>/dev/null || true)
+
+  if [ -n "$existing" ]; then
+    # Append to existing entry
+    sed -i "s|^${key}␟.*|${existing}␟${focus}|${sev}|${desc}|" "$merge_file"
   else
-    bucket[$key]="${focus}|${sev}|${desc}"
+    echo "${key}␟${focus}|${sev}|${desc}" >> "$merge_file"
   fi
 }
 
-emit_merged_section() {
-  local -n bucket=$1
-  local severity_label=$2
+# Count unique entries in a merge file
+merged_count() {
+  local f=$1
+  [ -f "$f" ] && wc -l < "$f" || echo 0
+}
 
-  [ ${#bucket[@]} -eq 0 ] && return
+emit_merged_section() {
+  local f=$1 severity_label=$2
+
+  if [ ! -s "$f" ]; then
+    out+=("")
+    out+=("### $severity_label")
+    out+=("")
+    out+=("None")
+    return
+  fi
 
   out+=("")
   out+=("### $severity_label")
   out+=("")
-  for key in "${!bucket[@]}"; do
-    local path lineno combined
+
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    local key combined path lineno
+    key=$(echo "$line" | cut -d'␟' -f1)
+    combined=$(echo "$line" | cut -d'␟' -f2-)
     path=$(echo "$key" | cut -d: -f1)
     lineno=$(echo "$key" | cut -d: -f2)
-    combined="${bucket[$key]}"
 
     local first=1 tags="" desc=""
     # Split entries separated by ␟ into newlines, then parse each
@@ -113,7 +144,7 @@ emit_merged_section() {
     done < <(echo "$combined" | tr '␟' '\n')
 
     out+=("- [ ] \`${path}:${lineno}\` — ${desc}${tags}")
-  done
+  done < "$f"
 }
 
 # ── Parse PR info ────────────────────────────────────────────────────
@@ -202,29 +233,9 @@ done
 
 # ── Emit merged checklist sections ────────────────────────────────────
 
-emit_merged_section MERGED_BLOCKING  "🔴 Blocking — must fix before merge"
-emit_merged_section MERGED_IMPORTANT "🟠 Important — should fix before merge"
-emit_merged_section MERGED_SUGGESTION "🟡 Suggestion — nice to have"
-
-# Fallback: if no findings at all in a tier, show "None"
-if [ ${#MERGED_BLOCKING[@]} -eq 0 ]; then
-  out+=("")
-  out+=("### 🔴 Blocking — must fix before merge")
-  out+=("")
-  out+=("None")
-fi
-if [ ${#MERGED_IMPORTANT[@]} -eq 0 ]; then
-  out+=("")
-  out+=("### 🟠 Important — should fix before merge")
-  out+=("")
-  out+=("None")
-fi
-if [ ${#MERGED_SUGGESTION[@]} -eq 0 ]; then
-  out+=("")
-  out+=("### 🟡 Suggestion — nice to have")
-  out+=("")
-  out+=("None")
-fi
+emit_merged_section "$BLOCKING_FILE"  "🔴 Blocking — must fix before merge"
+emit_merged_section "$IMPORTANT_FILE" "🟠 Important — should fix before merge"
+emit_merged_section "$SUGGESTION_FILE" "🟡 Suggestion — nice to have"
 
 # ── Footer ───────────────────────────────────────────────────────────
 
