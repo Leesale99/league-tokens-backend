@@ -39,6 +39,12 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Debug token
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "GH_TOKEN length: ${#GH_TOKEN}"
+          echo "GH_TOKEN first 10 chars: ${GH_TOKEN:0:10}"
       - id: dismiss
         run: .github/scripts/dismiss-outdated-reviews.sh \
           ${{ github.event.pull_request.number || inputs.pr_number }} \
