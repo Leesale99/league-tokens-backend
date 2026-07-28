@@ -23,7 +23,7 @@ concurrency:
 jobs:
   dismiss-outdated:
     if: |
-      !endsWith(github.actor, '[bot]') && (
+      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code' && (
         (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
          !contains(github.event.pull_request.labels.*.name, 'no-review'))
         ||
@@ -50,7 +50,7 @@ jobs:
     name: ${{ matrix.job_name }}
     needs: [dismiss-outdated]
     if: |
-      !endsWith(github.actor, '[bot]') && (
+      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code' && (
         (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
          !contains(github.event.pull_request.labels.*.name, 'no-review'))
         ||
@@ -100,7 +100,7 @@ jobs:
     needs: [review]
     if: |
       always() &&
-      !endsWith(github.actor, '[bot]') && (
+      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code' && (
         (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
          !contains(github.event.pull_request.labels.*.name, 'no-review'))
         ||
