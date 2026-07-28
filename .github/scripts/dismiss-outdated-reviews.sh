@@ -11,12 +11,12 @@ BASE_BRANCH="${3:-main}"
 
 # Fetch all bot comments
 comments=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate \
-  --jq 'map(select(.user.login | endswith("[bot]") and .line != null))')
+  --jq 'map(select(.user.login | endswith("[bot]") and .line != null))' 2>/dev/null) || comments="[]"
 
 count=$(echo "$comments" | jq 'length')
 if [ "$count" -eq 0 ]; then
-  echo "existing_comments=[]" >> "$GITHUB_OUTPUT"
-  echo "dismissed=0" >> "$GITHUB_OUTPUT"
+  echo "existing_comments=[]" >>"$GITHUB_OUTPUT"
+  echo "dismissed=0" >>"$GITHUB_OUTPUT"
   exit 0
 fi
 
@@ -35,8 +35,8 @@ while read -r comment; do
 
   if [ -n "$line" ] && echo "$CHANGED" | grep -Fxq "$path"; then
     # File was modified — check if the specific line changed
-     if git diff "origin/$BASE_BRANCH..HEAD" -- "$path" 2>/dev/null | \
-        grep -q "\+\b$line\b"; then
+    if git diff "origin/$BASE_BRANCH..HEAD" -- "$path" 2>/dev/null |
+      grep -q "\+\b$line\b"; then
       gh api "repos/$REPO/pulls/comments/$id" -X DELETE 2>/dev/null || true
       dismissed=$((dismissed + 1))
       continue
@@ -47,5 +47,5 @@ while read -r comment; do
   remaining=$(echo "$remaining" | jq ". + [{\"path\": \"$path\", \"line\": $line}]")
 done < <(echo "$comments" | jq -c '.[]')
 
-echo "existing_comments=$remaining" >> "$GITHUB_OUTPUT"
-echo "dismissed=$dismissed" >> "$GITHUB_OUTPUT"
+echo "existing_comments=$remaining" >>"$GITHUB_OUTPUT"
+echo "dismissed=$dismissed" >>"$GITHUB_OUTPUT"

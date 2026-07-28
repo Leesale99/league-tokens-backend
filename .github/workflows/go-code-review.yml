@@ -39,6 +39,21 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Debug gh auth
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== gh auth status ==="
+          gh auth status 2>&1 || true
+          echo "=== gh auth token (masked) ==="
+          gh auth token 2>&1 | head -c 10 || true
+          echo
+          echo "=== direct API test ==="
+          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number || inputs.pr_number }}/comments" 2>&1 | head -c 200
+          echo
+          echo "=== verbose curl test ==="
+          curl -v -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number || inputs.pr_number }}/comments?per_page=1" 2>&1 | head -50
       - id: dismiss
         run: .github/scripts/dismiss-outdated-reviews.sh \
           ${{ github.event.pull_request.number || inputs.pr_number }} \
