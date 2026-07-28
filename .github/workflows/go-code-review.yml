@@ -61,25 +61,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-           - focus: quality
+          - focus: quality
             model: deepseek-v4-pro
             skills: golang-code-style,golang-naming,golang-documentation
-
             job_name: Review — Quality
-           - focus: correctness
+          - focus: correctness
             model: deepseek-v4-flash
             skills: golang-error-handling,golang-safety,golang-concurrency
-
             job_name: Review — Correctness
-           - focus: security
+          - focus: security
             model: deepseek-v4-flash
             skills: golang-security,golang-dependency-management
-
             job_name: Review — Security & Dependencies
-           - focus: quality-depth
+          - focus: quality-depth
             model: deepseek-v4-pro
             skills: golang-testing,golang-performance,golang-observability,golang-modernize
-
             job_name: Review — Tests, Performance & Observability
     uses: ./.github/workflows/review.yml
     with:

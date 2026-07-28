@@ -51,8 +51,10 @@ BUILD="<!-- review-summary-start -->
 "
 
 # — Review effort
-pr_json=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-  --json additions,deletions,files,title,body 2>/dev/null || echo '{}')
+pr_json=$(curl -sSf \
+  -H "Authorization: Bearer $GH_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER" 2>/dev/null || echo '{}')
 
 additions=$(echo "$pr_json" | jq -r '.additions // 0')
 deletions=$(echo "$pr_json" | jq -r '.deletions // 0')
@@ -195,7 +197,10 @@ BUILD+="
 
 # ── Inject into PR body ──────────────────────────────────────────────
 
-current_body=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json body -q '.body')
+current_body=$(curl -sSf \
+  -H "Authorization: Bearer $GH_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER" 2>/dev/null | jq -r '.body // ""') || current_body=""
 
 # Replace content between markers, or prepend
 if echo "$current_body" | grep -q '<!-- review-summary-start -->'; then
@@ -205,5 +210,9 @@ else
   clean_body="$current_body"
 fi
 
-gh pr edit "$PR_NUMBER" --repo "$REPO" \
-  --body "${clean_body}"$'\n\n'"${BUILD}"
+curl -sSf -X PATCH \
+  -H "Authorization: Bearer $GH_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "Content-Type: application/json" \
+  "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER" \
+  -d "$(jq -n --arg body "${clean_body}"$'\n\n'"${BUILD}" '{body: $body}')"
