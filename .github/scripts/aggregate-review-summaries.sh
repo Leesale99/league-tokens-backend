@@ -34,16 +34,84 @@ compute_effort() {
   fi
 }
 
-# ── Deduplication helpers ────────────────────────────────────────────
+# ── Merge helpers — same (path, line) across foci ─────────────────────
+#
+# MERGED[key] stores combined entry data for a (path,line) pair.
+# Key format: "path:line"
+# We'll store: "focus1|sev1|desc1␟focus2|sev2|desc2"
+# (␟ is unit separator, | separates focus/severity/desc within a finding)
+declare -A MERGED_BLOCKING MERGED_IMPORTANT MERGED_SUGGESTION
 
-declare -A SEEN_PAIRS
+parse_and_merge() {
+  local focus=$1 line=$2 bucket_var=$3
 
-seen_before() {
-  [ -n "${SEEN_PAIRS[$1:$2]:-}" ]
+  local path lineno desc path_line
+
+  # Extract path:line from backtick-delimited format: `file.go:42`
+  if echo "$line" | grep -q '`'; then
+    path_line=$(echo "$line" | grep -o '`[^`]*`' | head -1 | tr -d '`')
+  else
+    # Fallback: " - [ ] file.go:42 — desc"
+    path_line=$(echo "$line" | sed 's/^- \[ \] \([^ ]*\) —.*/\1/')
+  fi
+
+  path=$(echo "$path_line" | cut -d: -f1)
+  lineno=$(echo "$path_line" | cut -d: -f2)
+  [ -z "$path" ] || [ -z "$lineno" ] && return 1
+
+  # Extract description (everything after " — ")
+  desc=$(echo "$line" | sed 's/^.* — //')
+  # Strip trailing focus label: " *[Focus]*" or " *[Focus (🟡)]*"
+  desc=$(echo "$desc" | sed 's/ \*\[.*\]\*$//')
+
+  local sev
+  case "$bucket_var" in
+    MERGED_BLOCKING)  sev="🔴" ;;
+    MERGED_IMPORTANT) sev="🟠" ;;
+    MERGED_SUGGESTION) sev="🟡" ;;
+  esac
+
+  local key="$path:$lineno"
+  local -n bucket=$bucket_var
+
+  if [ -n "${bucket[$key]:-}" ]; then
+    bucket[$key]="${bucket[$key]}␟${focus}|${sev}|${desc}"
+  else
+    bucket[$key]="${focus}|${sev}|${desc}"
+  fi
 }
 
-mark_seen() {
-  SEEN_PAIRS["$1:$2"]="$3"
+emit_merged_section() {
+  local -n bucket=$1
+  local severity_label=$2
+
+  [ ${#bucket[@]} -eq 0 ] && return
+
+  out+=("")
+  out+=("### $severity_label")
+  out+=("")
+  for key in "${!bucket[@]}"; do
+    local path lineno combined
+    path=$(echo "$key" | cut -d: -f1)
+    lineno=$(echo "$key" | cut -d: -f2)
+    combined="${bucket[$key]}"
+
+    local first=1 tags="" desc=""
+    # Split entries separated by ␟ into newlines, then parse each
+    while IFS= read -r entry; do
+      [ -z "$entry" ] && continue
+      f=$(echo "$entry" | cut -d'|' -f1)
+      s=$(echo "$entry" | cut -d'|' -f2)
+      d=$(echo "$entry" | cut -d'|' -f3-)
+      if [ "$first" -eq 1 ]; then
+        desc="$d"
+        first=0
+      fi
+      tags="${tags} *[$f ($s)]*"
+    done < <(echo "$combined" | tr '␟' '\n')
+
+    out+=("- [ ] \`${path}:${lineno}\` — ${desc}${tags}")
+  done
 }
 
 # ── Parse PR info ────────────────────────────────────────────────────
@@ -57,7 +125,7 @@ files=$(echo "$pr_json" | jq -r '.files | length // 0')
 title=$(echo "$pr_json" | jq -r '.title // ""')
 effort=$(compute_effort "$additions" "$deletions" "$files")
 
-# ── Collect per-focus stats ──────────────────────────────────────────
+# ── Collect per-focus stats & populate merge buckets ──────────────────
 
 declare -A b_count i_count s_count
 TOTAL_BLOCKING=0
@@ -79,6 +147,19 @@ for focus in "${FOCI[@]}"; do
   TOTAL_BLOCKING=$((TOTAL_BLOCKING + b_count[$focus]))
   TOTAL_IMPORTANT=$((TOTAL_IMPORTANT + i_count[$focus]))
   TOTAL_SUGGESTION=$((TOTAL_SUGGESTION + s_count[$focus]))
+
+  # Populate merge buckets for each severity level
+  while IFS= read -r line; do
+    [[ "$line" == "- [ "* ]] && parse_and_merge "$focus" "$line" MERGED_BLOCKING
+  done < <(section_lines "$sf" "🔴 Blocking" "🟠 Important" 2>/dev/null || true)
+
+  while IFS= read -r line; do
+    [[ "$line" == "- [ "* ]] && parse_and_merge "$focus" "$line" MERGED_IMPORTANT
+  done < <(section_lines "$sf" "🟠 Important" "🟡 Suggestion" 2>/dev/null || true)
+
+  while IFS= read -r line; do
+    [[ "$line" == "- [ "* ]] && parse_and_merge "$focus" "$line" MERGED_SUGGESTION
+  done < <(section_lines "$sf" "🟡 Suggestion" "---" 2>/dev/null || true)
 done
 
 # ── Build PR body summary ────────────────────────────────────────────
@@ -117,65 +198,31 @@ for focus in "${FOCI[@]}"; do
   out+=("| ${focus^} | ${b} | ${i} | ${s} | ${clean_mark} |")
 done
 
-# ── Checklist sections with deduplication ────────────────────────────
+# ── Emit merged checklist sections ────────────────────────────────────
 
-build_checklist_section() {
-  local severity_total=$1 header=$2 start_header=$3 end_header=$4
+emit_merged_section MERGED_BLOCKING  "🔴 Blocking — must fix before merge"
+emit_merged_section MERGED_IMPORTANT "🟠 Important — should fix before merge"
+emit_merged_section MERGED_SUGGESTION "🟡 Suggestion — nice to have"
 
-  if [ "$severity_total" -eq 0 ]; then
-    out+=("")
-    out+=("### $header")
-    out+=("")
-    out+=("None")
-    return
-  fi
-
-  local first_focus=1
-  for focus in "${FOCI[@]}"; do
-    local bv=${b_count[$focus]:--1}; [ "$bv" -eq -1 ] && continue
-
-    local sf="summaries/${focus}-summary/${focus}-review-summary.md"
-    local items
-    items=$(section_lines "$sf" "$start_header" "$end_header" 2>/dev/null || true)
-
-    if [ -z "$items" ]; then
-      [ "$first_focus" -eq 0 ] && { first_focus=0; continue; }
-      continue
-    fi
-
-    if [ "$first_focus" -eq 1 ]; then
-      out+=("")
-      out+=("### $header")
-      out+=("")
-      first_focus=0
-    fi
-
-    while IFS= read -r line; do
-      case "$line" in
-        "- [ "*)
-          local path_line path lineno
-          path_line=$(echo "$line" | sed 's/^- \[ \] `\?\(.*\)`\? —.*/\1/')
-          path=$(echo "$path_line" | cut -d: -f1)
-          lineno=$(echo "$path_line" | cut -d: -f2)
-
-          if [ -n "$path" ] && [ -n "$lineno" ] && seen_before "$path" "$lineno"; then
-            echo "::notice::Dedup ${path}:${lineno} — already in ${SEEN_PAIRS[$path:$lineno]}, skip $focus"
-            continue
-          fi
-          [ -n "$path" ] && [ -n "$lineno" ] && mark_seen "$path" "$lineno" "$focus"
-
-          local lbl=""
-          case "$line" in *"*[$focus]*"*) ;; *) lbl=" *[$focus]*" ;; esac
-          out+=("${line}${lbl}")
-          ;;
-      esac
-    done <<< "$items"
-  done
-}
-
-build_checklist_section "$TOTAL_BLOCKING"  "🔴 Blocking — must fix before merge"     "🔴 Blocking"   "🟠 Important"
-build_checklist_section "$TOTAL_IMPORTANT" "🟠 Important — should fix before merge"    "🟠 Important"  "🟡 Suggestion"
-build_checklist_section "$TOTAL_SUGGESTION" "🟡 Suggestion — nice to have"              "🟡 Suggestion" "---"
+# Fallback: if no findings at all in a tier, show "None"
+if [ ${#MERGED_BLOCKING[@]} -eq 0 ]; then
+  out+=("")
+  out+=("### 🔴 Blocking — must fix before merge")
+  out+=("")
+  out+=("None")
+fi
+if [ ${#MERGED_IMPORTANT[@]} -eq 0 ]; then
+  out+=("")
+  out+=("### 🟠 Important — should fix before merge")
+  out+=("")
+  out+=("None")
+fi
+if [ ${#MERGED_SUGGESTION[@]} -eq 0 ]; then
+  out+=("")
+  out+=("### 🟡 Suggestion — nice to have")
+  out+=("")
+  out+=("None")
+fi
 
 # ── Footer ───────────────────────────────────────────────────────────
 
@@ -191,8 +238,6 @@ build=$(printf '%s\n' "${out[@]}")
 # ── Build top-level comment body ─────────────────────────────────────
 
 comment_lines=()
-comment_lines+=("")
-comment_lines+=("<!-- aggregate-review-summary -->")
 comment_lines+=("")
 comment_lines+=("### 🔍 Review Summary")
 comment_lines+=("")
@@ -234,23 +279,12 @@ fi
 gh pr edit "$PR_NUMBER" --repo "$REPO" \
   --body "${clean_body}"$'\n\n'"${build}"
 
-# ── Post or update top-level comment ─────────────────────────────────
-
-# Find existing aggregate comment from this bot
-existing_comment_id=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-  --jq '.[] | select(.body | contains("<!-- aggregate-review-summary -->")) | .id' 2>/dev/null | head -1)
+# ── Post top-level comment ────────────────────────────────────────────
 
 tmp_body=$(mktemp)
 printf '%s\n' "$comment_body" > "$tmp_body"
 
-if [ -n "${existing_comment_id:-}" ]; then
-  jq -n --rawfile body "$tmp_body" '{body: $body}' | \
-    gh api "repos/$REPO/issues/comments/$existing_comment_id" \
-    -X PATCH --input - >/dev/null
-  echo "::notice::Updated existing review summary comment #$existing_comment_id"
-else
-  gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$tmp_body"
-  echo "::notice::Posted new review summary comment"
-fi
+gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$tmp_body"
+echo "::notice::Posted review summary comment"
 
 rm -f "$tmp_body"
