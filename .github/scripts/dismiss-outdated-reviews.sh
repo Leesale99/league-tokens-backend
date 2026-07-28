@@ -11,7 +11,7 @@ BASE_BRANCH="${3:-main}"
 
 # Fetch all bot comments
 comments=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate \
-  --jq 'map(select(.user.login | endswith("[bot]") and .line != null))' 2>/dev/null) || comments="[]"
+  --jq 'map(select(.user.login | endswith("[bot]") and .line != null))')
 
 count=$(echo "$comments" | jq 'length')
 if [ "$count" -eq 0 ]; then
