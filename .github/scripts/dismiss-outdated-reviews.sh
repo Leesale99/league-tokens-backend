@@ -10,13 +10,8 @@ REPO="$2"
 BASE_BRANCH="${3:-main}"
 
 # Fetch all bot comments
-AUTH="Authorization: Bearer $(echo "$GH_TOKEN" | tr -d '[:space:]')"
-API_URL="https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/comments?per_page=100"
-comments=$(curl -sS --fail \
-  -H "$AUTH" \
-  -H "Accept: application/vnd.github+json" \
-  "$API_URL" | \
-  jq 'map(select(.user.login | endswith("[bot]") and .line != null))')
+comments=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate \
+  --jq 'map(select(.user.login | endswith("[bot]") and .line != null))')
 
 count=$(echo "$comments" | jq 'length')
 if [ "$count" -eq 0 ]; then
@@ -42,9 +37,7 @@ while read -r comment; do
     # File was modified — check if the specific line changed
     if git diff "origin/$BASE_BRANCH..HEAD" -- "$path" 2>/dev/null |
       grep -q "\+\b$line\b"; then
-      curl -sS --fail -X DELETE \
-        -H "$AUTH" \
-        "https://api.github.com/repos/$REPO/pulls/comments/$id" 2>/dev/null || true
+      gh api "repos/$REPO/pulls/comments/$id" -X DELETE 2>/dev/null || true
       dismissed=$((dismissed + 1))
       continue
     fi
