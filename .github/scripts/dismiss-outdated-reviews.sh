@@ -12,7 +12,6 @@ BASE_BRANCH="${3:-main}"
 # Fetch all bot comments
 AUTH="Authorization: Bearer $(echo "$GH_TOKEN" | tr -d '[:space:]')"
 API_URL="https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/comments?per_page=100"
-echo "DEBUG: calling $API_URL" >&2
 comments=$(curl -sS --fail \
   -H "$AUTH" \
   -H "Accept: application/vnd.github+json" \
