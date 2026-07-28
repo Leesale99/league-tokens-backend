@@ -32,6 +32,39 @@ jobs:
           cat .github/prompts/ci-failure.md >> "$GITHUB_OUTPUT"
           echo 'PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
 
+      - name: Seed OpenCode model cache for pi-opencode-bridge
+        run: |
+          mkdir -p ~/.cache/opencode
+          cat > ~/.cache/opencode/models.json << 'MODELS_EOF'
+          {
+            "opencode-go": {
+              "id": "opencode-go",
+              "env": ["OPENCODE_API_KEY"],
+              "npm": "@ai-sdk/openai-compatible",
+              "api": "https://opencode.ai/zen/go/v1",
+              "name": "OpenCode Go",
+              "models": {
+                "deepseek-v4-flash": {
+                  "id": "deepseek-v4-flash",
+                  "name": "DeepSeek V4 Flash",
+                  "family": "deepseek-flash",
+                  "reasoning": true,
+                  "reasoning_options": [{"type": "effort", "values": ["high", "max"]}],
+                  "tool_call": true,
+                  "interleaved": {"field": "reasoning_content"},
+                  "structured_output": true,
+                  "temperature": true,
+                  "release_date": "2026-04-24",
+                  "last_updated": "2026-04-24",
+                  "modalities": {"input": ["text"], "output": ["text"]},
+                  "limit": {"context": 1000000, "output": 384000},
+                  "cost": {"input": 0.14, "output": 0.28, "cache_read": 0.0028}
+                }
+              }
+            }
+          }
+          MODELS_EOF
+
       - name: Run CI failure analysis
         uses: shaftoe/pi-coding-agent-action@v2
         timeout-minutes: 10
@@ -42,7 +75,7 @@ jobs:
         with:
           github_token: ${{ secrets.CODE_BOT_PAT }}
           provider: oc-sdk-go
-          model: oc-sdk-go/deepseek-v4-flash
+          model: deepseek-v4-flash
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
           extensions: |
             npm:pi-opencode-bridge
