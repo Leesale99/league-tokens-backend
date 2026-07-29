@@ -65,15 +65,29 @@ jobs:
           model: deepseek-v4-flash
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
           trigger: /code
+          auto_compaction: true
           loaded_tools: |
             get_pr_diff
             get_issue_or_pr_thread
             create_pull_request_review
-            create_pull_request
-            update_pull_request
           prompt: |
             When responding to a /code command, reply directly in the
             comment thread where the command was issued — do not create a new
             top-level comment. Before posting, check if a previous bot comment
             in the same thread already addresses this topic and update it instead
             of creating a duplicate. Keep responses concise.
+
+            ## Context efficiency (CRITICAL — save tokens)
+
+            You already have the triggering comment body in your context.
+            Do NOT call `get_issue_or_pr_thread` unless the /code command
+            explicitly references something you cannot see in the triggering
+            comment. If you must use it, limit the fetch to the specific
+            comment thread, not the full PR conversation.
+
+            Do NOT call `get_pr_diff` speculatively. Only fetch the diff
+            if the /code command asks about specific code or you need
+            file-level context to provide a helpful response.
+
+            Complete the response in 2 tool-call rounds maximum.
+            If the task is simple, reply without any tool calls.

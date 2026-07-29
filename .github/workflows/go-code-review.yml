@@ -88,6 +88,7 @@ jobs:
       repo: ${{ github.repository }}
       workflow_run_id: ${{ github.run_id }}
       existing_comments: ${{ needs.dismiss-outdated.outputs.existing_comments }}
+      base_ref: ${{ github.event.pull_request.base.ref || 'main' }}
     secrets:
       opencode_api_key: ${{ secrets.OPENCODE_GO_API_KEY }}
       gh_token: ${{ secrets.GITHUB_TOKEN }}

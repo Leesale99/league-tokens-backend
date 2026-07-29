@@ -29,6 +29,7 @@ jobs:
         id: prompt
         run: |
           echo 'content<<PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
+          cat .github/prompts/_common.md >> "$GITHUB_OUTPUT"
           cat .github/prompts/ci-failure.md >> "$GITHUB_OUTPUT"
           echo 'PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
 
@@ -74,4 +75,5 @@ jobs:
             get_ci_status
             get_pr_diff
             create_pull_request_review
+          auto_compaction: true
           prompt: ${{ steps.prompt.outputs.content }}

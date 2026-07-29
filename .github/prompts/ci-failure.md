@@ -39,21 +39,6 @@ and test failures over lint and vulncheck.
 
 The PR branch is checked out. Focus on the specific files that caused CI failures.
 
-## How to write comments
-
-Structure each inline comment as:
-
-🟡 SUGGESTION — title
-
-1-2 sentences: the problem, why it causes the failure.
-
-```suggestion
-corrected code
-```
-
-Use ```suggestion blocks when the fix is a direct code replacement.
-Tone: professional, constructive. Explain the "why", not just the "what".
-
 ## Efficiency
 
 - Read all logs and PR diff in ONE batch.
