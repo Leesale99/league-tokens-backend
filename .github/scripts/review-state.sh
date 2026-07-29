@@ -20,13 +20,17 @@ case "$ACTION" in
       LAST_SHA=$(cat "$FILE")
       CURRENT_SHA=$(git rev-parse HEAD)
       if [ "$LAST_SHA" != "$CURRENT_SHA" ]; then
-        DIFF=$(git diff "$LAST_SHA..$CURRENT_SHA")
-        DELIM="DIFF_END_${RANDOM}${RANDOM}"
-        {
-          echo "INCREMENTAL_DIFF<<${DELIM}"
-          echo "$DIFF"
-          echo "${DELIM}"
-        } >> "$GITHUB_ENV"
+        if git cat-file -e "$LAST_SHA" 2>/dev/null; then
+          DIFF=$(git diff "$LAST_SHA..$CURRENT_SHA")
+          DELIM="DIFF_END_${RANDOM}${RANDOM}"
+          {
+            echo "INCREMENTAL_DIFF<<${DELIM}"
+            echo "$DIFF"
+            echo "${DELIM}"
+          } >> "$GITHUB_ENV"
+        else
+          echo "::notice title=Incremental Review Fallback::Cached SHA $LAST_SHA not found (PR was rebased?) — running full review"
+        fi
       fi
     fi
     ;;

@@ -7,8 +7,7 @@ set -euo pipefail
 
 PR_NUMBER="$1"
 REPO="$2"
-
-BASE_BRANCH=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json baseRefName -q '.baseRefName' 2>/dev/null || echo "main")
+BASE_BRANCH="${3:-main}"
 
 # Fetch all bot comments
 comments=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate \
@@ -16,8 +15,8 @@ comments=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate \
 
 count=$(echo "$comments" | jq 'length')
 if [ "$count" -eq 0 ]; then
-  echo "existing_comments=[]" >> "$GITHUB_OUTPUT"
-  echo "dismissed=0" >> "$GITHUB_OUTPUT"
+  echo "existing_comments=[]" >>"$GITHUB_OUTPUT"
+  echo "dismissed=0" >>"$GITHUB_OUTPUT"
   exit 0
 fi
 
@@ -36,8 +35,8 @@ while read -r comment; do
 
   if [ -n "$line" ] && echo "$CHANGED" | grep -Fxq "$path"; then
     # File was modified — check if the specific line changed
-     if git diff "origin/$BASE_BRANCH..HEAD" -- "$path" 2>/dev/null | \
-        grep -q "\+\b$line\b"; then
+    if git diff "origin/$BASE_BRANCH..HEAD" -- "$path" 2>/dev/null |
+      grep -q "\+\b$line\b"; then
       gh api "repos/$REPO/pulls/comments/$id" -X DELETE 2>/dev/null || true
       dismissed=$((dismissed + 1))
       continue
@@ -45,8 +44,8 @@ while read -r comment; do
   fi
 
   # Comment is still relevant
-  remaining=$(echo "$remaining" | jq ". + [{\"path\": \"$path\", \"line\": $line}]")
+  remaining=$(echo "$remaining" | jq --arg path "$path" --argjson line "$line" '. + [{"path": $path, "line": $line}]')
 done < <(echo "$comments" | jq -c '.[]')
 
-echo "existing_comments=$remaining" >> "$GITHUB_OUTPUT"
-echo "dismissed=$dismissed" >> "$GITHUB_OUTPUT"
+echo "existing_comments=$remaining" >>"$GITHUB_OUTPUT"
+echo "dismissed=$dismissed" >>"$GITHUB_OUTPUT"

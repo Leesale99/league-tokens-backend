@@ -1,0 +1,90 @@
+name: Code Agent
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  group: code-agent-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  code-agent:
+    if: |
+      github.actor != 'aleksrdvn-code' && (
+        contains(github.event.comment.body, ' /code') ||
+        startsWith(github.event.comment.body, '/code')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Configure oc-sdk-go custom provider
+        run: bash .github/scripts/configure-provider.sh
+
+      - name: Fetch thread context
+        id: thread-context
+        env:
+          GH_TOKEN: ${{ secrets.CODE_BOT_PAT }}
+        run: |
+          TASK=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH" | sed 's|^/code[[:space:]]*||')
+          echo "task<<TASK_EOF" >> "$GITHUB_OUTPUT"
+          echo "$TASK" >> "$GITHUB_OUTPUT"
+          echo "TASK_EOF" >> "$GITHUB_OUTPUT"
+
+          IN_REPLY_TO=$(jq -r '.comment.in_reply_to_id // 0' "$GITHUB_EVENT_PATH")
+          echo "in_reply_to=$IN_REPLY_TO" >> "$GITHUB_OUTPUT"
+          if [ "$IN_REPLY_TO" != "0" ] && [ "$IN_REPLY_TO" != "null" ]; then
+            PARENT=$(gh api "repos/${{ github.repository }}/pulls/comments/$IN_REPLY_TO" --jq '.body' 2>/dev/null || true)
+            if [ -n "$PARENT" ]; then
+              echo "parent_body<<PARENT_EOF" >> "$GITHUB_OUTPUT"
+              echo "$PARENT" >> "$GITHUB_OUTPUT"
+              echo "PARENT_EOF" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Run Code Agent
+        uses: shaftoe/pi-coding-agent-action@v2
+        with:
+          github_token: ${{ secrets.CODE_BOT_PAT }}
+          provider: oc-sdk-go
+          model: deepseek-v4-flash
+          token: ${{ secrets.OPENCODE_GO_API_KEY }}
+          trigger: /code
+          auto_compaction: true
+          loaded_tools: |
+            read
+            write
+            edit
+            grep
+            bash
+            update_pull_request
+          prompt: |
+            You were triggered by a `/code` command.
+            REPLY IN THE SAME COMMENT THREAD. One sentence max.
+
+            ## Thread Context (the comment being replied to)
+            ${{ steps.thread-context.outputs.parent_body }}
+
+            ## Task
+            ${{ steps.thread-context.outputs.task }}
+
+            ## What to do
+
+            1. Thread Context tells you what needs to change.
+            2. Make changes with `read`/`write`/`edit`/`grep`. Use `bash` only as a last resort when other tools aren't enough.
+            3. Push via `update_pull_request`.
+            4. Reply with a 1-line summary. 2 rounds max.
