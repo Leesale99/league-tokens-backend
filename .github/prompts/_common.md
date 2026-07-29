@@ -1,37 +1,42 @@
-## PR Diff
+## Rules
 
-The PR diff is embedded below. Review only files and lines shown.
-If the diff is short or empty (incremental mode), review only the
-new changes — previous runs already covered the rest.
+1. Review the diff. Post ONE review via `create_pull_request_review` (event: COMMENT).
+2. **Review body must be EMPTY.** All findings as inline comments only.
+3. Output a fenced JSON array as your final response. No other text — no narration, no thinking, no headings.
+
+## JSON format
+
+```json
+[
+  {
+    "severity": "blocking",
+    "path": "pkg/foo.go",
+    "line": 42,
+    "description": "error not checked — could panic on nil"
+  }
+]
+```
+
+- `severity` — `"blocking"` | `"important"` | `"suggestion"`
+- `path` — relative to repo root
+- `line` — integer (right-side of diff)
+- `description` — one-line description of the issue
+
+No findings → `[]`
+
+## Inline comments
+
+```
+[SEVERITY] — title
+
+1-2 sentences. Use ```suggestion blocks for code fixes.
+```
 
 ## Dedup
 
-`OUTDATED_COMMENTS` is a JSON array of `{"path","line"}`
-pairs from previously dismissed/outdated comments. Skip these lines.
+`OUTDATED_COMMENTS` is a JSON array of `{"path","line"}` from dismissed comments. Skip those lines.
 
-Flag findings on all other lines normally. Do not skip a line just
-because another focus might have covered it.
+## Token budget
 
-Never create duplicate top-level inline comments within your own review.
-
-## How to write comments
-
-Each inline comment:
-
-[SEVERITY] — title
-
-1-2 sentences on the issue and why it matters.
-
-```suggestion
-corrected code
-```
-
-Use ```suggestion blocks for direct code fixes.
-Be constructive. Explain why, not just what.
-
-## Token budget (CRITICAL)
-
-- Read AGENTS.md in ONE call — don't read it piece by piece.
-- Max 5 tool-call rounds. Skip low-severity when the diff is large.
-- Skip files with no Go source changes (YAML, MD, shell scripts)
-  unless they touch security or CI-critical logic in your scope.
+Max 5 tool-call rounds. Skip low-severity on large diffs.
+Skip non-Go files unless security or CI-critical.
