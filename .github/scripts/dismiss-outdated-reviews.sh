@@ -44,8 +44,10 @@ while read -r comment; do
   fi
 
   # Comment is still relevant
-  remaining=$(echo "$remaining" | jq --arg path "$path" --argjson line "$line" '. + [{"path": $path, "line": $line}]')
+  remaining=$(echo "$remaining" | jq -c --arg path "$path" --argjson line "$line" '. + [{"path": $path, "line": $line}]')
 done < <(echo "$comments" | jq -c '.[]')
 
-echo "existing_comments=$remaining" >>"$GITHUB_OUTPUT"
+echo 'existing_comments<<EOF' >>"$GITHUB_OUTPUT"
+echo "$remaining" >>"$GITHUB_OUTPUT"
+echo 'EOF' >>"$GITHUB_OUTPUT"
 echo "dismissed=$dismissed" >>"$GITHUB_OUTPUT"
