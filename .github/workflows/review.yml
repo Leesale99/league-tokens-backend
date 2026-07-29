@@ -123,7 +123,7 @@ jobs:
 
       - name: Save review summary
         run: |
-          cat <<'REVIEW_SUMMARY_EOF' > "/tmp/${{ inputs.focus }}-review-summary.md"
+          cat <<'REVIEW_SUMMARY_EOF' > "/tmp/${{ inputs.focus }}-review-summary.json"
           ${{ steps.pi.outputs.response }}
           REVIEW_SUMMARY_EOF
 
@@ -141,20 +141,10 @@ jobs:
       - name: Handle timeout / ensure summary exists
         if: always()
         run: |
-          FILE="/tmp/${{ inputs.focus }}-review-summary.md"
+          FILE="/tmp/${{ inputs.focus }}-review-summary.json"
           if [ ! -f "$FILE" ]; then
-            LABEL="${{ inputs.job_name }}"
-            if [ "${{ steps.pi.outcome }}" = "cancelled" ] || \
-               [ "${{ steps.pi.outcome }}" = "failure" ]; then
-              echo "# ${LABEL} — Failed" > "$FILE"
-              echo "" >> "$FILE"
-              echo "The review did not complete. Check the workflow logs for details." >> "$FILE"
-              echo "::warning::${LABEL} did not complete — placeholder summary created."
-            else
-              echo "# ${LABEL} — Skipped" > "$FILE"
-              echo "" >> "$FILE"
-              echo "The review was skipped." >> "$FILE"
-            fi
+            echo '[]' > "$FILE"
+            echo "::warning::Review ${{ inputs.job_name }} did not complete — placeholder summary created."
           fi
 
       - name: Upload review summary
@@ -162,6 +152,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.focus }}-summary
-          path: /tmp/${{ inputs.focus }}-review-summary.md
+          path: /tmp/${{ inputs.focus }}-review-summary.json
           if-no-files-found: ignore
           retention-days: 1
