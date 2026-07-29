@@ -117,8 +117,6 @@ jobs:
       existing_comments: ${{ needs.dismiss-outdated.outputs.existing_comments }}
     secrets:
       opencode_api_key: ${{ secrets.OPENCODE_GO_API_KEY }}
-      gh_token: ${{ secrets.GITHUB_TOKEN }}
-      code_bot_pat: ${{ secrets.CODE_BOT_PAT }}
 
   aggregate-and-report:
     name: Aggregate Reviews & Report

@@ -33,10 +33,6 @@ on:
     secrets:
       opencode_api_key:
         required: true
-      gh_token:
-        required: true
-      code_bot_pat:
-        required: true
 
 jobs:
   review:
@@ -46,7 +42,6 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      GITHUB_TOKEN: ${{ secrets.gh_token }}
       PR_NUMBER: ${{ inputs.pr_number }}
       REPO: ${{ inputs.repo }}
       WORKFLOW_RUN_ID: ${{ inputs.workflow_run_id }}
@@ -148,7 +143,7 @@ jobs:
         uses: shaftoe/pi-coding-agent-action@v2
         timeout-minutes: 20
         with:
-          github_token: ${{ secrets.code_bot_pat }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           provider: oc-sdk-go
           model: ${{ inputs.model }}
           token: ${{ secrets.opencode_api_key }}

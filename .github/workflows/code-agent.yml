@@ -60,7 +60,7 @@ jobs:
       - name: Fetch thread context
         id: thread-context
         env:
-          GH_TOKEN: ${{ secrets.CODE_BOT_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           TASK=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH" | sed 's|^/code[[:space:]]*||')
           echo "task<<TASK_EOF" >> "$GITHUB_OUTPUT"
@@ -81,7 +81,7 @@ jobs:
       - name: Run Code Agent
         uses: shaftoe/pi-coding-agent-action@v2
         with:
-          github_token: ${{ secrets.CODE_BOT_PAT }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           provider: oc-sdk-go
           model: deepseek-v4-flash
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
@@ -92,6 +92,7 @@ jobs:
             write
             edit
             grep
+            bash
             update_pull_request
           prompt: |
             You were triggered by a `/code` command.
@@ -106,5 +107,6 @@ jobs:
             ## What to do
 
             1. Thread Context tells you what needs to change.
-            2. Make the changes. Push via `update_pull_request`.
-            3. Reply with a 1-line summary. 2 rounds max.
+            2. Make changes with `read`/`write`/`edit`/`grep`. Use `bash` only as a last resort when other tools aren't enough.
+            3. Push via `update_pull_request`.
+            4. Reply with a 1-line summary. 2 rounds max.
