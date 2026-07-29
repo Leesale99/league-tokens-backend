@@ -90,6 +90,8 @@ jobs:
 
       - name: Read review prompt
         id: prompt
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           echo 'content<<PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
           cat ".github/prompts/_common.md" >> "$GITHUB_OUTPUT"
