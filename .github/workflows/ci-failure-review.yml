@@ -28,9 +28,15 @@ jobs:
       - name: Read CI failure prompt
         id: prompt
         run: |
+          PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
           echo 'content<<PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
           cat .github/prompts/_common.md >> "$GITHUB_OUTPUT"
           cat .github/prompts/ci-failure.md >> "$GITHUB_OUTPUT"
+          echo '' >> "$GITHUB_OUTPUT"
+          echo '## PR Diff' >> "$GITHUB_OUTPUT"
+          echo '```diff' >> "$GITHUB_OUTPUT"
+          gh pr diff "$PR_NUMBER" --repo "${{ github.repository }}" 2>/dev/null | head -n 500 >> "$GITHUB_OUTPUT" || true
+          echo '```' >> "$GITHUB_OUTPUT"
           echo 'PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
 
       - name: Configure oc-sdk-go custom provider
@@ -73,7 +79,6 @@ jobs:
           loaded_tools: |
             get_workflow_run_logs
             get_ci_status
-            get_pr_diff
             create_pull_request_review
           auto_compaction: true
           prompt: ${{ steps.prompt.outputs.content }}

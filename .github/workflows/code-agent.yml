@@ -57,6 +57,16 @@ jobs:
           }
           MODELS_EOF
 
+      - name: Fetch PR diff
+        id: pr-diff
+        run: |
+          PR="${{ github.event.issue.number || github.event.pull_request.number }}"
+          if [ -n "$PR" ]; then
+            echo 'diff<<DIFF_EOF' >> "$GITHUB_OUTPUT"
+            gh pr diff "$PR" --repo "${{ github.repository }}" 2>/dev/null | head -n 500 >> "$GITHUB_OUTPUT" || true
+            echo 'DIFF_EOF' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Code Agent
         uses: shaftoe/pi-coding-agent-action@v2
         with:
@@ -67,27 +77,25 @@ jobs:
           trigger: /code
           auto_compaction: true
           loaded_tools: |
-            get_pr_diff
-            get_issue_or_pr_thread
             create_pull_request_review
+            update_pull_request
+            get_ci_status
           prompt: |
-            When responding to a /code command, reply directly in the
-            comment thread where the command was issued — do not create a new
-            top-level comment. Before posting, check if a previous bot comment
-            in the same thread already addresses this topic and update it instead
-            of creating a duplicate. Keep responses concise.
+            You were triggered by a `/code` command on a PR review comment
+            thread. REPLY IN THE SAME COMMENT THREAD.
+            Your reply must be a single sentence, no reasoning or planning.
 
-            ## Context efficiency (CRITICAL — save tokens)
+            ## PR Diff
+            ${{ steps.pr-diff.outputs.diff }}
 
-            You already have the triggering comment body in your context.
-            Do NOT call `get_issue_or_pr_thread` unless the /code command
-            explicitly references something you cannot see in the triggering
-            comment. If you must use it, limit the fetch to the specific
-            comment thread, not the full PR conversation.
+            ## What to do
 
-            Do NOT call `get_pr_diff` speculatively. Only fetch the diff
-            if the /code command asks about specific code or you need
-            file-level context to provide a helpful response.
+            1. Review the PR diff above to understand the suggestion.
+            2. Make the changes in the checked-out repo.
+            3. Push commits using `update_pull_request`.
+            4. Reply with a 1-line summary — no reasoning, no planning.
 
-            Complete the response in 2 tool-call rounds maximum.
-            If the task is simple, reply without any tool calls.
+            ## Rules
+
+            - Your reply = EXACTLY one sentence summarizing what changed.
+            - Complete everything in 2 tool-call rounds maximum.

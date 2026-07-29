@@ -50,7 +50,7 @@ jobs:
       PR_NUMBER: ${{ inputs.pr_number }}
       REPO: ${{ inputs.repo }}
       WORKFLOW_RUN_ID: ${{ inputs.workflow_run_id }}
-      EXISTING_COMMENTS: ${{ inputs.existing_comments }}
+      OUTDATED_COMMENTS: ${{ inputs.existing_comments }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -99,6 +99,15 @@ jobs:
           echo 'content<<PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
           cat ".github/prompts/_common.md" >> "$GITHUB_OUTPUT"
           cat ".github/prompts/${{ inputs.focus }}.md" >> "$GITHUB_OUTPUT"
+          echo '' >> "$GITHUB_OUTPUT"
+          echo '## PR Diff' >> "$GITHUB_OUTPUT"
+          echo '```diff' >> "$GITHUB_OUTPUT"
+          if [ -n "${INCREMENTAL_DIFF:-}" ]; then
+            echo "$INCREMENTAL_DIFF" | head -n 500 >> "$GITHUB_OUTPUT"
+          else
+            gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null | head -n 500 >> "$GITHUB_OUTPUT" || true
+          fi
+          echo '```' >> "$GITHUB_OUTPUT"
           echo 'PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
 
       - name: Configure oc-sdk-go custom provider
@@ -144,9 +153,8 @@ jobs:
           model: ${{ inputs.model }}
           token: ${{ secrets.opencode_api_key }}
           loaded_tools: |
-            get_pr_diff
-            get_issue_or_pr_thread
             create_pull_request_review
+            get_ci_status
           auto_compaction: true
           prompt: ${{ steps.prompt.outputs.content }}
 
