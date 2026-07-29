@@ -121,12 +121,6 @@ jobs:
           auto_compaction: true
           prompt: ${{ steps.prompt.outputs.content }}
 
-      - name: Save review summary
-        run: |
-          cat <<'REVIEW_SUMMARY_EOF' > "/tmp/${{ inputs.focus }}-review-summary.json"
-          ${{ steps.pi.outputs.response }}
-          REVIEW_SUMMARY_EOF
-
       - name: Save review state
         if: success()
         run: .github/scripts/review-state.sh save ${{ inputs.focus }}
@@ -137,21 +131,3 @@ jobs:
         with:
           path: .review-state
           key: review-state-${{ inputs.pr_number }}-${{ inputs.focus }}-${{ github.run_id }}
-
-      - name: Handle timeout / ensure summary exists
-        if: always()
-        run: |
-          FILE="/tmp/${{ inputs.focus }}-review-summary.json"
-          if [ ! -f "$FILE" ]; then
-            echo '[]' > "$FILE"
-            echo "::warning::Review ${{ inputs.job_name }} did not complete — placeholder summary created."
-          fi
-
-      - name: Upload review summary
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.focus }}-summary
-          path: /tmp/${{ inputs.focus }}-review-summary.json
-          if-no-files-found: ignore
-          retention-days: 1

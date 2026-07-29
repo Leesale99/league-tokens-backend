@@ -12,9 +12,7 @@ on:
 
 permissions:
   contents: read
-  issues: read
   pull-requests: write
-  actions: read
 
 concurrency:
   group: code-agent-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
@@ -133,12 +131,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: Download review summaries
-        uses: actions/download-artifact@v4
-        with:
-          path: summaries/
-        continue-on-error: true
 
       - name: Aggregate and update PR body
         env:
