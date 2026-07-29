@@ -11,7 +11,7 @@ BASE_BRANCH="${3:-main}"
 
 # Fetch all bot comments
 comments=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate \
-  --jq 'map(select(.user.login | endswith("[bot]") and .line != null))')
+  --jq 'map(select((.user.login | endswith("[bot]")) and .line != null))')
 
 count=$(echo "$comments" | jq 'length')
 if [ "$count" -eq 0 ]; then
@@ -44,8 +44,12 @@ while read -r comment; do
   fi
 
   # Comment is still relevant
-  remaining=$(echo "$remaining" | jq --arg path "$path" --argjson line "$line" '. + [{"path": $path, "line": $line}]')
+  remaining=$(echo "$remaining" | jq -c --arg path "$path" --argjson line "$line" '. + [{"path": $path, "line": $line}]')
 done < <(echo "$comments" | jq -c '.[]')
 
-echo "existing_comments=$remaining" >>"$GITHUB_OUTPUT"
-echo "dismissed=$dismissed" >>"$GITHUB_OUTPUT"
+echo "existing_comments<<EOF" >>"$GITHUB_OUTPUT"
+echo "$remaining" >>"$GITHUB_OUTPUT"
+echo "EOF" >>"$GITHUB_OUTPUT"
+echo "dismissed<<EOF" >>"$GITHUB_OUTPUT"
+echo "$dismissed" >>"$GITHUB_OUTPUT"
+echo "EOF" >>"$GITHUB_OUTPUT"
