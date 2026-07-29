@@ -80,7 +80,13 @@ jobs:
 
       - name: Install Go review skills
         run: |
-          git clone --depth 1 https://github.com/samber/cc-skills-golang.git /tmp/cc-skills-golang
+          for SKILL in $(echo "${{ inputs.skills }}" | tr ',' ' '); do
+            if [ -d "/tmp/cc-skills-golang/skills/$SKILL" ]; then
+              cp -r "/tmp/cc-skills-golang/skills/$SKILL" ".pi/skills/"
+            else
+              echo "::warning::Skill $SKILL not found in cc-skills-golang — skipping"
+            fi
+          done
           mkdir -p .pi/skills
           for SKILL in $(echo "${{ inputs.skills }}" | tr ',' ' '); do
             cp -r "/tmp/cc-skills-golang/skills/$SKILL" ".pi/skills/"
