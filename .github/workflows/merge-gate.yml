@@ -45,6 +45,7 @@ jobs:
 
           # ── Check the other workflows ───────────────────────────────
           ALL_REQUIRED='["CI", "Go Code Review (Code Agent)", "Requirements Verification"]'
+          ALL_DONE=true
 
           for OTHER in $(echo "$ALL_REQUIRED" | jq -r '.[]'); do
             [ "$OTHER" = "$TRIGGERING" ] && continue
@@ -54,12 +55,18 @@ jobs:
               '[.[] | select(.headSha == "'"$HEAD_SHA"'") | .conclusion] | first // "missing"' 2>/dev/null || echo "missing")
 
             if [ "$CONCLUSION" = "missing" ]; then
-              echo "$OTHER didn't run for this commit — proceeding without it."
+              echo "$OTHER hasn't completed for this commit yet."
+              ALL_DONE=false
             elif [ "$CONCLUSION" != "success" ]; then
               echo "::error::$OTHER did not pass ($CONCLUSION)"
               exit 1
             fi
           done
+
+          if [ "$ALL_DONE" != "true" ]; then
+            echo "Not all required workflows completed yet — skipping label check."
+            exit 0
+          fi
 
           # ── Check labels (two independent axes) ──────────────────────
           LABELS=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name' 2>/dev/null || true)
