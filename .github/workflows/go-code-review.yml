@@ -21,12 +21,7 @@ concurrency:
 jobs:
   has-go:
     if: |
-      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code' && (
-        (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
-         !contains(github.event.pull_request.labels.*.name, 'no-review'))
-        ||
-        (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
-      )
+      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
     runs-on: ubuntu-latest
     outputs:
       go: ${{ steps.check.outputs.go }}
@@ -35,12 +30,18 @@ jobs:
         with:
           fetch-depth: 0
       - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BASE="${{ github.event.pull_request.base.ref || 'main' }}"
+          PR_NUMBER="${{ github.event.pull_request.number || inputs.pr_number }}"
+          REPO="${{ github.repository }}"
           if git diff --name-only "origin/$BASE..HEAD" 2>/dev/null | grep -q '\.go$'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label no-review 2>/dev/null || true
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label no-review 2>/dev/null || true
           fi
 
   dismiss-outdated:
@@ -116,11 +117,37 @@ jobs:
     secrets:
       opencode_api_key: ${{ secrets.OPENCODE_GO_API_KEY }}
 
+  verify-requirements:
+    name: Verify Requirements
+    needs: []
+    if: |
+      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code' && (
+        (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
+         !contains(github.event.pull_request.labels.*.name, 'no-review'))
+        ||
+        (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Verify requirements against linked issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: .github/scripts/verify-requirements.sh
+
   aggregate-and-report:
     name: Aggregate Reviews & Report
-    needs: [has-go, review]
+    needs: [has-go, review, verify-requirements]
     if: |
-      needs.has-go.outputs.go == 'true' &&
       always() &&
       !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code' && (
         (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
@@ -138,6 +165,7 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          HAS_GO: ${{ needs.has-go.outputs.go || 'false' }}
         run: .github/scripts/aggregate-review-summaries.sh
 
       - name: Report final status
