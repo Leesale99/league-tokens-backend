@@ -1,7 +1,7 @@
 name: Merge Gate
 on:
   workflow_run:
-    workflows: ["Go Code Review (Code Agent)", "CI"]
+    workflows: ["Go Code Review (Code Agent)", "CI", "Requirements Verification"]
     types: [completed]
 
 permissions:
@@ -43,23 +43,23 @@ jobs:
             exit 1
           fi
 
-          # ── Check the other workflow ─────────────────────────────────
-          if [ "$TRIGGERING" = "Go Code Review (Code Agent)" ]; then
-            OTHER="CI"
-          else
-            OTHER="Go Code Review (Code Agent)"
-          fi
+          # ── Check the other workflows ───────────────────────────────
+          ALL_REQUIRED='["CI", "Go Code Review (Code Agent)", "Requirements Verification"]'
 
-          OTHER_CONCLUSION=$(gh run list --workflow "$OTHER" --branch "$HEAD_BRANCH" \
-            --json conclusion,headSha --limit 5 -q \
-            '[.[] | select(.headSha == "'"$HEAD_SHA"'") | .conclusion] | first // "missing"' 2>/dev/null || echo "missing")
+          for OTHER in $(echo "$ALL_REQUIRED" | jq -r '.[]'); do
+            [ "$OTHER" = "$TRIGGERING" ] && continue
 
-          if [ "$OTHER_CONCLUSION" = "missing" ]; then
-            echo "$OTHER didn't run for this commit — proceeding without it."
-          elif [ "$OTHER_CONCLUSION" != "success" ]; then
-            echo "::error::$OTHER did not pass ($OTHER_CONCLUSION)"
-            exit 1
-          fi
+            CONCLUSION=$(gh run list --workflow "$OTHER" --branch "$HEAD_BRANCH" \
+              --json conclusion,headSha --limit 5 -q \
+              '[.[] | select(.headSha == "'"$HEAD_SHA"'") | .conclusion] | first // "missing"' 2>/dev/null || echo "missing")
+
+            if [ "$CONCLUSION" = "missing" ]; then
+              echo "$OTHER didn't run for this commit — proceeding without it."
+            elif [ "$CONCLUSION" != "success" ]; then
+              echo "::error::$OTHER did not pass ($CONCLUSION)"
+              exit 1
+            fi
+          done
 
           # ── Check labels (two independent axes) ──────────────────────
           LABELS=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name' 2>/dev/null || true)
