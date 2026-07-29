@@ -57,14 +57,25 @@ jobs:
           }
           MODELS_EOF
 
-      - name: Fetch PR diff
-        id: pr-diff
+      - name: Fetch thread context
+        id: thread-context
+        env:
+          GH_TOKEN: ${{ secrets.CODE_BOT_PAT }}
         run: |
-          PR="${{ github.event.issue.number || github.event.pull_request.number }}"
-          if [ -n "$PR" ]; then
-            echo 'diff<<DIFF_EOF' >> "$GITHUB_OUTPUT"
-            gh pr diff "$PR" --repo "${{ github.repository }}" 2>/dev/null | head -n 500 >> "$GITHUB_OUTPUT" || true
-            echo 'DIFF_EOF' >> "$GITHUB_OUTPUT"
+          TASK=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH" | sed 's|^/code[[:space:]]*||')
+          echo "task<<TASK_EOF" >> "$GITHUB_OUTPUT"
+          echo "$TASK" >> "$GITHUB_OUTPUT"
+          echo "TASK_EOF" >> "$GITHUB_OUTPUT"
+
+          IN_REPLY_TO=$(jq -r '.comment.in_reply_to_id // 0' "$GITHUB_EVENT_PATH")
+          echo "in_reply_to=$IN_REPLY_TO" >> "$GITHUB_OUTPUT"
+          if [ "$IN_REPLY_TO" != "0" ] && [ "$IN_REPLY_TO" != "null" ]; then
+            PARENT=$(gh api "repos/${{ github.repository }}/pulls/comments/$IN_REPLY_TO" --jq '.body' 2>/dev/null || true)
+            if [ -n "$PARENT" ]; then
+              echo "parent_body<<PARENT_EOF" >> "$GITHUB_OUTPUT"
+              echo "$PARENT" >> "$GITHUB_OUTPUT"
+              echo "PARENT_EOF" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Run Code Agent
@@ -81,21 +92,17 @@ jobs:
             update_pull_request
             get_ci_status
           prompt: |
-            You were triggered by a `/code` command on a PR review comment
-            thread. REPLY IN THE SAME COMMENT THREAD.
-            Your reply must be a single sentence, no reasoning or planning.
+            You were triggered by a `/code` command.
+            REPLY IN THE SAME COMMENT THREAD. One sentence max.
 
-            ## PR Diff
-            ${{ steps.pr-diff.outputs.diff }}
+            ## Thread Context (the comment being replied to)
+            ${{ steps.thread-context.outputs.parent_body }}
+
+            ## Task
+            ${{ steps.thread-context.outputs.task }}
 
             ## What to do
 
-            1. Review the PR diff above to understand the suggestion.
-            2. Make the changes in the checked-out repo.
-            3. Push commits using `update_pull_request`.
-            4. Reply with a 1-line summary — no reasoning, no planning.
-
-            ## Rules
-
-            - Your reply = EXACTLY one sentence summarizing what changed.
-            - Complete everything in 2 tool-call rounds maximum.
+            1. Thread Context tells you what needs to change.
+            2. Make the changes. Push via `update_pull_request`.
+            3. Reply with a 1-line summary. 2 rounds max.
