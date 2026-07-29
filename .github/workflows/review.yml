@@ -30,11 +30,6 @@ on:
         type: string
         default: ""
         description: JSON array of {path, line} from dismissed-outdated comments
-      base_ref:
-        required: false
-        type: string
-        default: main
-        description: Base branch for detecting Go file changes
     secrets:
       opencode_api_key:
         required: true
@@ -75,17 +70,7 @@ jobs:
         id: incremental
         run: .github/scripts/review-state.sh restore ${{ inputs.focus }}
 
-      - name: Detect Go file changes
-        id: has-go
-        run: |
-          if git diff --name-only "origin/${{ inputs.base_ref }}..HEAD" 2>/dev/null | grep -q '\.go$'; then
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "go=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/setup-go@v6
-        if: steps.has-go.outputs.go == 'true'
         with:
           go-version: stable
 
@@ -94,7 +79,6 @@ jobs:
           node-version: 24
 
       - name: Install Go review skills
-        if: steps.has-go.outputs.go == 'true'
         run: |
           for SKILL in $(echo "${{ inputs.skills }}" | tr ',' ' '); do
             if [ -d "/tmp/cc-skills-golang/skills/$SKILL" ]; then
