@@ -29,7 +29,7 @@ case "$ACTION" in
             echo "${DELIM}"
           } >> "$GITHUB_ENV"
         else
-          echo "::notice::Cached SHA $LAST_SHA not found (PR was rebased?) — running full review"
+          echo "::notice title=Incremental Review Fallback::Cached SHA $LAST_SHA not found (PR was rebased?) — running full review"
         fi
       fi
     fi
