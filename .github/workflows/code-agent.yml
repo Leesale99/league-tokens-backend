@@ -88,9 +88,11 @@ jobs:
           trigger: /code
           auto_compaction: true
           loaded_tools: |
-            create_pull_request_review
+            read
+            write
+            edit
+            grep
             update_pull_request
-            get_ci_status
           prompt: |
             You were triggered by a `/code` command.
             REPLY IN THE SAME COMMENT THREAD. One sentence max.
