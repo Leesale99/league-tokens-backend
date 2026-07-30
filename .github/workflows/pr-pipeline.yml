@@ -1,4 +1,4 @@
-name: Go Code Review (Code Agent)
+name: PR Pipeline
 
 on:
   pull_request:
@@ -6,16 +6,17 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "PR number to review"
+        description: "PR number"
         required: true
         type: string
 
 permissions:
   contents: read
   pull-requests: write
+  issues: read
 
 concurrency:
-  group: code-agent-review-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
+  group: pr-pipeline-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -30,19 +31,36 @@ jobs:
         with:
           fetch-depth: 0
       - id: check
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BASE="${{ github.event.pull_request.base.ref || 'main' }}"
-          PR_NUMBER="${{ github.event.pull_request.number || inputs.pr_number }}"
-          REPO="${{ github.repository }}"
           if git diff --name-only "origin/$BASE..HEAD" 2>/dev/null | grep -q '\.go$'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
-            gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label no-review 2>/dev/null || true
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
-            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label no-review 2>/dev/null || true
           fi
+
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  verify-requirements:
+    if: |
+      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
+    runs-on: ubuntu-latest
+    outputs:
+      no-issue: ${{ steps.verify.outputs.no-issue }}
+      issue-num: ${{ steps.verify.outputs.issue-num }}
+      checklist: ${{ steps.verify.outputs.checklist }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: .github/scripts/verify-requirements.sh
 
   dismiss-outdated:
     needs: [has-go]
@@ -55,9 +73,6 @@ jobs:
         (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
       )
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
     outputs:
       existing_comments: ${{ steps.dismiss.outputs.existing_comments }}
     steps:
@@ -65,13 +80,13 @@ jobs:
         with:
           fetch-depth: 0
       - id: dismiss
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           .github/scripts/dismiss-outdated-reviews.sh
           ${{ github.event.pull_request.number || inputs.pr_number }}
           ${{ github.repository }}
           ${{ github.event.pull_request.base.ref || 'main' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   review:
     name: ${{ matrix.job_name }}
@@ -117,33 +132,23 @@ jobs:
     secrets:
       opencode_api_key: ${{ secrets.OPENCODE_GO_API_KEY }}
 
-  aggregate-and-report:
-    name: Aggregate Reviews & Report
-    needs: [has-go, review]
+  report-and-gate:
+    needs: [has-go, ci, verify-requirements, review]
     if: |
       always() &&
-      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code' && (
-        (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
-         !contains(github.event.pull_request.labels.*.name, 'no-review'))
-        ||
-        (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
-      )
+      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: Aggregate and update PR body
+      - name: Report & gate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
           HAS_GO: ${{ needs.has-go.outputs.go || 'false' }}
-        run: .github/scripts/aggregate-review-summaries.sh
-
-      - name: Report final status
-        run: |
-          if echo '${{ toJSON(needs) }}' | grep -q '"result":"failure"'; then
-            echo "One or more review jobs failed."
-            exit 1
-          fi
+          CHECKLIST: ${{ needs.verify-requirements.outputs.checklist }}
+          NO_ISSUE: ${{ needs.verify-requirements.outputs.no-issue }}
+          CI_RESULT: ${{ needs.ci.result }}
+          VERIFY_RESULT: ${{ needs.verify-requirements.result }}
+        run: .github/scripts/report-and-gate.sh
