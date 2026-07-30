@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
+  issues: read
 
 concurrency:
   group: pr-pipeline-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
@@ -44,9 +46,6 @@ jobs:
     if: |
       !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      issues: read
     outputs:
       no-issue: ${{ steps.verify.outputs.no-issue }}
       issue-num: ${{ steps.verify.outputs.issue-num }}
@@ -74,8 +73,6 @@ jobs:
         (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
       )
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     outputs:
       existing_comments: ${{ steps.dismiss.outputs.existing_comments }}
     steps:
@@ -141,8 +138,6 @@ jobs:
       always() &&
       !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
       - uses: actions/checkout@v6
       - name: Report & gate
