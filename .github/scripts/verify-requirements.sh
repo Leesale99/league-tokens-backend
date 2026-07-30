@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Verifies whether PR changes meet the requirements from its linked issue.
-# Injects a checklist into the PR body under <!-- requirements-review-start -->
-# and <!-- requirements-review-end --> markers.
-# Manages the `no-requirements` label (set when no linked issue found)
-# and the `requirements-verified` label (set when all checkboxes ticked).
+# Phase A: Verifies whether PR changes meet the requirements from its
+# linked issue. Outputs a checklist and discovery flags via GITHUB_OUTPUT.
+# Does NOT touch PR body or labels.
 set -euo pipefail
 
 tmp=$(mktemp -d)
@@ -15,17 +13,15 @@ CURRENT_BODY=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json body -q '.body')
 ISSUE_NUM=$(echo "$CURRENT_BODY" | grep -oiP '(?:close|closes|fix|fixes|resolve|resolves)\s*:?\s*#\K\d+' | head -1 || true)
 
 if [ -z "$ISSUE_NUM" ]; then
-  echo "No linked issue found — adding no-requirements, removing stale requirements-verified."
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label no-requirements 2>/dev/null || true
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-verified 2>/dev/null || true
+  echo "No linked issue found."
+  echo "no-issue=true" >> "$GITHUB_OUTPUT"
+  echo "issue-num=" >> "$GITHUB_OUTPUT"
   exit 0
 fi
 
 echo "Linked issue: #$ISSUE_NUM"
-
-# ── Remove no-requirements (there are now requirements to verify) ──────
-
-gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label no-requirements 2>/dev/null || true
+echo "no-issue=false" >> "$GITHUB_OUTPUT"
+echo "issue-num=$ISSUE_NUM" >> "$GITHUB_OUTPUT"
 
 # ── Check if all requirements already met (token-saving skip) ──────────
 
@@ -35,7 +31,11 @@ if echo "$CURRENT_BODY" | grep -q '<!-- requirements-review-start -->'; then
   UNCHECKED=$(echo "$SECTION" | grep -F -c '[ ]' 2>/dev/null || true)
   if [ "${TOTAL:-0}" -gt 0 ] && [ "${UNCHECKED:-0}" -eq 0 ]; then
     echo "All requirements already satisfied — skipping re-verification."
-    gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label requirements-verified 2>/dev/null || true
+    {
+      echo "checklist<<CHECKLIST_EOF"
+      printf '%s\n' "$SECTION"
+      echo "CHECKLIST_EOF"
+    } >> "$GITHUB_OUTPUT"
     exit 0
   fi
   echo "$UNCHECKED requirement(s) still not met — re-verifying."
@@ -93,9 +93,10 @@ fi
 
 echo "AI analysis received (${#CONTENT} chars)."
 
-# ── Build PR body section ──────────────────────────────────────────────
+# ── Output checklist section (including markers) to GITHUB_OUTPUT ──────
 
 {
+  echo "checklist<<CHECKLIST_EOF"
   echo "<!-- requirements-review-start -->"
   echo ""
   echo "## Requirements Verification — Issue #$ISSUE_NUM"
@@ -105,31 +106,5 @@ echo "AI analysis received (${#CONTENT} chars)."
   echo "---"
   echo ""
   echo "<!-- requirements-review-end -->"
-} > "$tmp/section.txt"
-
-SECTION=$(cat "$tmp/section.txt")
-
-# ── Inject into PR body ────────────────────────────────────────────────
-
-if echo "$CURRENT_BODY" | grep -q '<!-- requirements-review-start -->'; then
-  CLEAN_BODY=$(echo "$CURRENT_BODY" | sed '/<!-- requirements-review-start -->/,/<!-- requirements-review-end -->/d')
-else
-  CLEAN_BODY="$CURRENT_BODY"
-fi
-
-gh pr edit "$PR_NUMBER" --repo "$REPO" --body "${CLEAN_BODY}"$'\n\n'"${SECTION}"
-
-echo "Requirements verification section written to PR body."
-
-# ── Apply requirements-verified label ──────────────────────────────────
-
-printf '%s\n' "$CONTENT" > "$tmp/content.txt"
-UNCHECKED=$(grep -F -c '[ ]' "$tmp/content.txt" || true)
-
-if [ "$UNCHECKED" -eq 0 ]; then
-  echo "All requirements met — adding requirements-verified label."
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label requirements-verified 2>/dev/null || true
-else
-  echo "$UNCHECKED requirement(s) not met — removing requirements-verified label."
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-verified 2>/dev/null || true
-fi
+  echo "CHECKLIST_EOF"
+} >> "$GITHUB_OUTPUT"
