@@ -13,22 +13,27 @@ cat > ~/.pi/agent/models.json << 'MODELS_EOF'
       "api": "openai-completions",
       "models": [
         {
-          "id": "deepseek-v4-pro",
-          "name": "DeepSeek V4 Pro",
-          "reasoning": true,
-          "input": ["text"],
-          "cost": {"input": 0.435, "output": 0.87, "cacheRead": 0.003625, "cacheWrite": 0},
-          "contextWindow": 1000000,
-          "maxTokens": 384000
-        },
-        {
           "id": "deepseek-v4-flash",
-          "name": "DeepSeek V4 Flash",
+          "name": "DeepSeek V4 Flash (New)",
           "reasoning": true,
           "input": ["text"],
           "cost": {"input": 0.14, "output": 0.28, "cacheRead": 0.0028, "cacheWrite": 0},
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "maxTokensField": "max_tokens",
+            "requiresReasoningContentOnAssistantMessages": true,
+            "thinkingFormat": "deepseek"
+          },
           "contextWindow": 1000000,
-          "maxTokens": 384000
+          "maxTokens": 384000,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "max": "max"
+          }
         }
       ]
     }
