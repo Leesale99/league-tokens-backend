@@ -39,7 +39,7 @@ if [ "$HAS_GO" = "true" ]; then
   gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate --jq "
     .[]
     | select(.user.login == \"github-actions[bot]\")
-    | select(.body | test(\"\\\\*\\\\*(blocking|important|suggestion)\\\\*\\\\*\"))
+    | select(.body | test(\"\\\\*\\\\*\\\\[(blocking|important|suggestion)\\\\]\"))
     | select(.in_reply_to_id == null)
     | select(.line != null)
     | select(.id as \$cid | $excluded_ids | index(\$cid) == null)
@@ -56,13 +56,13 @@ if [ "$HAS_GO" = "true" ]; then
     first_line=$(echo "$body" | head -1)
 
     case "$first_line" in
-      *'**blocking'**) sev="blocking" ;;
-      *'**important'**) sev="important" ;;
-      *'**suggestion'**) sev="suggestion" ;;
+      *'**[blocking]'*) sev="blocking" ;;
+      *'**[important]'*) sev="important" ;;
+      *'**[suggestion]'*) sev="suggestion" ;;
       *) continue ;;
     esac
 
-    title=$(echo "$first_line" | sed 's/^\*\*'"$sev"'\*\* — //;s/\*\*$//')
+    title=$(echo "$first_line" | sed 's/^\*\*\['"$sev"'\] — //;s/\*\*$//')
 
     desc=$(echo "$body" | sed '1,2d' | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//' | head -c 200)
 
