@@ -16,18 +16,35 @@ NO_ISSUE="${NO_ISSUE:-false}"
 
 total_blocking=0
 review_section=""
+usage_section=""
 
 if [ "$HAS_GO" = "true" ]; then
   echo "Aggregating review comments ..."
 
+  # Exclude comments in resolved or outdated review threads. The REST pull
+  # comments API does not expose thread state, so resolve it via GraphQL.
+  excluded_ids=$(gh api graphql \
+    -f query='query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved isOutdated comments(first: 100) { nodes { databaseId } } } } } } }' \
+    -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F pr="$PR_NUMBER" \
+    --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isOutdated or .isResolved) | .comments.nodes[].databaseId]' 2>/dev/null || true)
+  excluded_ids="${excluded_ids:-[]}"
+  if [ "$excluded_ids" != "[]" ]; then
+    echo "Excluding $(echo "$excluded_ids" | jq 'length') comment(s) in resolved/outdated threads."
+  fi
+
   comments_raw="$tmp/comments.jsonl"
 
-  gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate --jq '
+  # Only open comments count: not replies, not on outdated diffs (line null),
+  # not in resolved/outdated threads.
+  gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate --jq "
     .[]
-    | select(.user.login == "github-actions[bot]")
-    | select(.body | test("\\*\\*(blocking|important|suggestion)\\*\\*"))
+    | select(.user.login == \"github-actions[bot]\")
+    | select(.body | test(\"\\\\*\\\\*(blocking|important|suggestion)\\\\*\\\\*\"))
+    | select(.in_reply_to_id == null)
+    | select(.line != null)
+    | select(.id as \$cid | $excluded_ids | index(\$cid) == null)
     | {body: .body, path: .path, line: .line}
-  ' > "$comments_raw"
+  " > "$comments_raw"
 
   all_findings='[]'
 
@@ -38,8 +55,12 @@ if [ "$HAS_GO" = "true" ]; then
 
     first_line=$(echo "$body" | head -1)
 
-    sev=$(echo "$first_line" | sed -n 's/^.*\*\*\(blocking\|important\|suggestion\)\*\*.*/\1/p')
-    [ -z "${sev:-}" ] && continue
+    case "$first_line" in
+      *'**blocking'**) sev="blocking" ;;
+      *'**important'**) sev="important" ;;
+      *'**suggestion'**) sev="suggestion" ;;
+      *) continue ;;
+    esac
 
     title=$(echo "$first_line" | sed 's/^\*\*'"$sev"'\*\* — //;s/\*\*$//')
 
@@ -110,14 +131,18 @@ if [ "$HAS_GO" = "true" ]; then
   if [ -n "$USAGE_DIR" ] && [ -d "$USAGE_DIR" ]; then
     usage_rows=$(jq -sr 'sort_by(.job) | .[] | "| \(.job) | \(.model) | \(.usage.input) | \(.usage.cacheRead) | \(.usage.output) | \(.usage.cacheWrite) | \(.usage.total) | $\((.usage.cost * 10000 | round) / 10000) |"' "$USAGE_DIR"/*/review-usage.json 2>/dev/null || true)
   fi
+  usage_section=""
   if [ -n "$usage_rows" ]; then
-    out+=("")
-    out+=("### Token Usage")
-    out+=("")
-    out+=("| Job | Model | Input | Cache read | Output | Cache write | Total | Cost |")
-    out+=("|---|---|---|---|---|---|---|---|")
-    while IFS= read -r l; do out+=("$l"); done <<< "$usage_rows"
-    out+=("")
+    usage_section=$(printf '%s\n' \
+      "<!-- token-usage-start -->" \
+      "" \
+      "## Token Usage" \
+      "" \
+      "| Job | Model | Input | Cache read | Output | Cache write | Total | Cost |" \
+      "|---|---|---|---|---|---|---|---|" \
+      "$usage_rows" \
+      "" \
+      "<!-- token-usage-end -->")
   fi
 
   out+=("---")
@@ -146,14 +171,23 @@ if echo "$clean_body" | grep -q '<!-- requirements-review-start -->'; then
   clean_body=$(echo "$clean_body" | sed '/<!-- requirements-review-start -->/,/<!-- requirements-review-end -->/d')
 fi
 
+if echo "$clean_body" | grep -q '<!-- token-usage-start -->'; then
+  clean_body=$(echo "$clean_body" | sed '/<!-- token-usage-start -->/,/<!-- token-usage-end -->/d')
+fi
+
 new_body="$clean_body"
+
+# Section order: 1) Requirements summary, 2) AI review summary, 3) Token usage.
+if [ "$NO_ISSUE" != "true" ] && [ -n "${CHECKLIST:-}" ]; then
+  new_body="${new_body}"$'\n\n'"${CHECKLIST}"
+fi
 
 if [ -n "$review_section" ]; then
   new_body="${new_body}"$'\n\n'"${review_section}"
 fi
 
-if [ "$NO_ISSUE" != "true" ] && [ -n "${CHECKLIST:-}" ]; then
-  new_body="${new_body}"$'\n\n'"${CHECKLIST}"
+if [ -n "$usage_section" ]; then
+  new_body="${new_body}"$'\n\n'"${usage_section}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════
