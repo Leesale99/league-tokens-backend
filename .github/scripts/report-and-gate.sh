@@ -39,11 +39,11 @@ if [ "$HAS_GO" = "true" ]; then
   gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate --jq "
     .[]
     | select(.user.login == \"github-actions[bot]\")
-    | select(.body | test(\"\\\\*\\\\*\\\\[(blocking|important|suggestion)\\\\]\"))
+    | select(.body | test(\"\\\\*\\\\*[^*]*(blocking|important|suggestion)\"))
     | select(.in_reply_to_id == null)
     | select(.line != null)
     | select(.id as \$cid | $excluded_ids | index(\$cid) == null)
-    | {body: .body, path: .path, line: .line}
+    | {body: .body, path: .path, line: .line, id: .id}
   " > "$comments_raw"
 
   all_findings='[]'
@@ -52,17 +52,18 @@ if [ "$HAS_GO" = "true" ]; then
     body=$(echo "$raw" | jq -r '.body')
     path=$(echo "$raw" | jq -r '.path')
     line=$(echo "$raw" | jq -r '.line')
+    id=$(echo "$raw" | jq -r '.id')
 
     first_line=$(echo "$body" | head -1)
 
     case "$first_line" in
-      *'**[blocking]'*) sev="blocking" ;;
-      *'**[important]'*) sev="important" ;;
-      *'**[suggestion]'*) sev="suggestion" ;;
+      *'**'*'blocking'*) sev="blocking" ;;
+      *'**'*'important'*) sev="important" ;;
+      *'**'*'suggestion'*) sev="suggestion" ;;
       *) continue ;;
     esac
 
-    title=$(echo "$first_line" | sed 's/^\*\*\['"$sev"'\] — //;s/\*\*$//')
+    title=$(echo "$first_line" | sed -E 's/^[^—]*— //;s/\*\*$//')
 
     desc=$(echo "$body" | sed '1,2d' | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//' | head -c 200)
 
@@ -78,8 +79,9 @@ if [ "$HAS_GO" = "true" ]; then
       --arg sev "$sev" \
       --arg path "$path" \
       --argjson line "$line" \
+      --argjson id "$id" \
       --arg desc "$full_desc" \
-      '. + [{severity: $sev, path: $path, line: $line, description: $desc}]' \
+      '. + [{severity: $sev, path: $path, line: $line, id: $id, description: $desc}]' \
       2>/dev/null || echo "$all_findings")
 
   done < "$comments_raw"
@@ -110,16 +112,21 @@ if [ "$HAS_GO" = "true" ]; then
   if [ "$total_blocking" -eq 0 ] && [ "$total_important" -eq 0 ] && [ "$total_suggestion" -eq 0 ]; then
     out+=("No issues found.")
   else
-    for sev_label in "blocking:### 🔴 Blocking" "important:### 🟠 Important" "suggestion:### 🟡 Suggestion"; do
+    for sev_label in "blocking:🔴 Blocking" "important:🟠 Important" "suggestion:🟡 Suggestion"; do
       sev="${sev_label%%:*}"
       heading="${sev_label##*:}"
+      count=$(echo "$all_findings" | jq '[.[] | select(.severity == "'"$sev"'")] | length')
       items=$(echo "$all_findings" | jq -r \
-        '[.[] | select(.severity == "'"$sev"'")] | .[] | "- [ ] `\(.path):\(.line)` — \(.description)"' \
+        --arg repo "$REPO" --arg pr "$PR_NUMBER" \
+        '[.[] | select(.severity == "'"$sev"'")] | .[] | "- [ ] [`\(.path):\(.line)`](https://github.com/\($repo)/pull/\($pr)#discussion_r\(.id)) — \(.description)"' \
         2>/dev/null || true)
       if [ -n "${items:-}" ]; then
-        out+=("$heading")
+        out+=("<details>")
+        out+=("<summary>$heading ($count)</summary>")
         out+=("")
         while IFS= read -r l; do out+=("$l"); done <<< "$items"
+        out+=("")
+        out+=("</details>")
         out+=("")
       fi
     done
