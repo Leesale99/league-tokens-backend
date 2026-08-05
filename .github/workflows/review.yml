@@ -91,42 +91,71 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo 'content<<PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
-          cat ".github/prompts/_common.md" >> "$GITHUB_OUTPUT"
-          cat ".github/prompts/${{ inputs.focus }}.md" >> "$GITHUB_OUTPUT"
-          echo '' >> "$GITHUB_OUTPUT"
-          echo '## PR Diff' >> "$GITHUB_OUTPUT"
-          echo '```diff' >> "$GITHUB_OUTPUT"
+          cat ".github/prompts/_common.md" > "$RUNNER_TEMP/review-prompt.md"
+          cat ".github/prompts/${{ inputs.focus }}.md" >> "$RUNNER_TEMP/review-prompt.md"
+          printf '\n## PR Diff\n' >> "$RUNNER_TEMP/review-prompt.md"
+          printf '```diff\n' >> "$RUNNER_TEMP/review-prompt.md"
           if [ -n "${INCREMENTAL_DIFF:-}" ]; then
-            echo "$INCREMENTAL_DIFF" | head -n 500 >> "$GITHUB_OUTPUT"
+            echo "$INCREMENTAL_DIFF" | head -n 500 >> "$RUNNER_TEMP/review-prompt.md"
           else
-            gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null | head -n 500 >> "$GITHUB_OUTPUT" || true
+            gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null | head -n 500 >> "$RUNNER_TEMP/review-prompt.md" || true
           fi
-          echo '```' >> "$GITHUB_OUTPUT"
-          echo 'PROMPT_DELIM_EOF' >> "$GITHUB_OUTPUT"
+          printf '```\n' >> "$RUNNER_TEMP/review-prompt.md"
 
       - name: Configure oc-sdk-go custom provider
         run: bash .github/scripts/configure-provider.sh
 
-      - id: pi
-        uses: shaftoe/pi-coding-agent-action@v2
+      - name: Install pi
+        run: npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+
+      - name: Run pi review
+        id: pi
         timeout-minutes: 20
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          provider: oc-sdk-go
-          model: ${{ inputs.model }}
-          token: ${{ secrets.opencode_api_key }}
-          loaded_tools: |
-            create_pull_request_review
-          auto_compaction: true
-          export_session_jsonl: true
-          prompt: ${{ steps.prompt.outputs.content }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_GO_API_KEY: ${{ secrets.opencode_api_key }}
+        run: |
+          set -euo pipefail
+          # Run pi directly (no shaftoe/pi-coding-agent-action): the CLI never
+          # posts a final comment on the PR, so no cleanup step is needed.
+          # The create_pull_request_review tool comes from our own extension.
+          # Load the review skills explicitly (deterministic, no trust/approval
+          # dependency on .pi/skills auto-discovery).
+          SKILL_ARGS=""
+          for SKILL in $(echo "${{ inputs.skills }}" | tr ',' ' '); do
+            if [ -d ".pi/skills/$SKILL" ]; then
+              SKILL_ARGS="$SKILL_ARGS --skill .pi/skills/$SKILL"
+            else
+              echo "::warning::Skill $SKILL not found in .pi/skills — skipping"
+            fi
+          done
+
+          pi --mode json \
+            --provider oc-sdk-go \
+            --model "${{ inputs.model }}" \
+            --api-key "$OPENCODE_GO_API_KEY" \
+            --thinking off \
+            -a \
+            -e .github/extensions/github-review.ts \
+            --tools read,bash,edit,write,grep,find,ls,create_pull_request_review \
+            $SKILL_ARGS \
+            "@$RUNNER_TEMP/review-prompt.md" \
+            > "$RUNNER_TEMP/pi-session.jsonl" 2> "$RUNNER_TEMP/pi-stderr.log"
+
+          # pi exits 0 even when the model call fails (auth/quota/rate limit), so
+          # detect a session error in the event stream and fail the job instead.
+          if grep -q '"stopReason":"error"' "$RUNNER_TEMP/pi-session.jsonl"; then
+            echo "::error::pi session ended with error"
+            cat "$RUNNER_TEMP/pi-stderr.log" >&2 || true
+            grep '"stopReason":"error"' "$RUNNER_TEMP/pi-session.jsonl" | head -1 >&2 || true
+            exit 1
+          fi
 
       - name: Aggregate token usage
         id: usage
         if: always()
         env:
-          JSONL_PATH: ${{ steps.pi.outputs.session_jsonl_path }}
+          JSONL_PATH: ${{ runner.temp }}/pi-session.jsonl
           JOB_NAME: ${{ inputs.job_name }}
           MODEL: ${{ inputs.model }}
         run: |

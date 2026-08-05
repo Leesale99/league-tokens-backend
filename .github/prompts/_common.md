@@ -6,16 +6,19 @@
 
 ## Inline comments
 
-Use this exact format for every inline comment. Do not vary the severity label.
+Use this exact format for every inline comment. Do not vary the severity label or emoji.
 
 ```
-**[severity] — title**
+**🔴 blocking — title**
 
 1-2 sentences. Use ```suggestion blocks for code fixes.
 ```
 
-- `severity` — lowercase, one of: `blocking`, `important`, `suggestion`
-- Always bold the entire first line (`**[severity] — title**`).
+- `severity` — one of: `blocking` 🔴, `important` 🟠, `suggestion` 🟡
+- Always bold the entire first line, prefixed with the severity emoji badge:
+  - `**🔴 blocking — title**`
+  - `**🟠 important — title**`
+  - `**🟡 suggestion — title**`
 
 ## Dedup
 
