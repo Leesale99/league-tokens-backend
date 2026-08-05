@@ -57,6 +57,7 @@ jobs:
           fi
 
       - name: Run Code Agent
+        id: pi
         uses: shaftoe/pi-coding-agent-action@v2
         with:
           github_token: ${{ secrets.CODE_BOT_PAT }}
@@ -65,6 +66,7 @@ jobs:
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
           trigger: /code
           auto_compaction: true
+          export_session_jsonl: true
           loaded_tools: |
             read
             write
@@ -88,3 +90,25 @@ jobs:
             2. Make changes with `read`/`write`/`edit`/`grep`. Use `bash` only as a last resort when other tools aren't enough.
             3. Push via `update_pull_request`.
             4. Reply with a 1-line summary. 2 rounds max.
+
+      - name: Aggregate token usage
+        if: always()
+        env:
+          JSONL_PATH: ${{ steps.pi.outputs.session_jsonl_path }}
+        run: |
+          set -euo pipefail
+          USAGE_JSON='{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"reasoning":0,"total":0,"cost":0}'
+          if [ -n "${JSONL_PATH:-}" ] && [ -f "$JSONL_PATH" ]; then
+            USAGE_JSON=$(jq -cs '[.[] | (.usage // .message.usage) | select(. != null)] | {input: (map(.input // 0) | add), output: (map(.output // 0) | add), cacheRead: (map(.cacheRead // 0) | add), cacheWrite: (map(.cacheWrite // 0) | add), reasoning: (map(.reasoning // 0) | add), total: (map(.totalTokens // 0) | add), cost: (map(.cost.total // 0) | add)}' "$JSONL_PATH")
+          else
+            echo "::warning::Session JSONL export unavailable — token usage reported as zero."
+          fi
+          {
+            echo "## Token Usage"
+            echo ""
+            echo "**Job:** Code Agent · **Model:** deepseek-v4-flash"
+            echo ""
+            echo "| Input (fresh) | Cache read | Output | Cache write | Reasoning | Total | Cost |"
+            echo "|---|---|---|---|---|---|---|"
+            echo "| $(echo "$USAGE_JSON" | jq -r '.input') | $(echo "$USAGE_JSON" | jq -r '.cacheRead') | $(echo "$USAGE_JSON" | jq -r '.output') | $(echo "$USAGE_JSON" | jq -r '.cacheWrite') | $(echo "$USAGE_JSON" | jq -r '.reasoning') | $(echo "$USAGE_JSON" | jq -r '.total') | \$$(echo "$USAGE_JSON" | jq -r '.cost * 10000 | round | . / 10000') |"
+          } >> "$GITHUB_STEP_SUMMARY"

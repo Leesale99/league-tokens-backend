@@ -130,6 +130,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Download review usage artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: review-usage-*
+          path: ${{ runner.temp }}/review-usage
       - name: Report & gate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -139,6 +146,7 @@ jobs:
           HAS_GO: ${{ needs.has-go.outputs.go || 'false' }}
           CHECKLIST: ${{ needs.verify-requirements.outputs.checklist }}
           NO_ISSUE: ${{ needs.verify-requirements.outputs.no-issue }}
+          USAGE_DIR: ${{ runner.temp }}/review-usage
           HAS_GO_RESULT: ${{ needs.has-go.result }}
           CI_RESULT: ${{ needs.ci.result }}
           VERIFY_RESULT: ${{ needs.verify-requirements.result }}

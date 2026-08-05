@@ -104,6 +104,22 @@ if [ "$HAS_GO" = "true" ]; then
     done
   fi
 
+  # Token usage per review job (from uploaded review-usage-* artifacts).
+  USAGE_DIR="${USAGE_DIR:-}"
+  usage_rows=""
+  if [ -n "$USAGE_DIR" ] && [ -d "$USAGE_DIR" ]; then
+    usage_rows=$(jq -sr 'sort_by(.job) | .[] | "| \(.job) | \(.model) | \(.usage.input) | \(.usage.cacheRead) | \(.usage.output) | \(.usage.cacheWrite) | \(.usage.total) | $\((.usage.cost * 10000 | round) / 10000) |"' "$USAGE_DIR"/*/review-usage.json 2>/dev/null || true)
+  fi
+  if [ -n "$usage_rows" ]; then
+    out+=("")
+    out+=("### Token Usage")
+    out+=("")
+    out+=("| Job | Model | Input | Cache read | Output | Cache write | Total | Cost |")
+    out+=("|---|---|---|---|---|---|---|---|")
+    while IFS= read -r l; do out+=("$l"); done <<< "$usage_rows"
+    out+=("")
+  fi
+
   out+=("---")
   out+=("[View workflow →](https://github.com/$REPO/actions/runs/$RUN_ID)")
   out+=("")
