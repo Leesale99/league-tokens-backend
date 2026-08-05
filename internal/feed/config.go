@@ -36,7 +36,11 @@ func (c *Config) Validate() error {
 	if c.PollInterval <= 0 {
 		errs = append(errs, "FEED_POLL_INTERVAL must be positive")
 	}
-	if len(errs) > 0 {
+type Config struct {
+	ProviderURL    string        `env:"FEED_PROVIDER_URL,required"`
+	ProviderAPIKey string        `env:"PROVIDER_API_KEY"`
+	PollInterval   time.Duration `env:"FEED_POLL_INTERVAL" envDefault:"1m"`
+}
 		return fmt.Errorf("feed config: %s", strings.Join(errs, "; "))
 	}
 	return nil
