@@ -119,7 +119,48 @@ jobs:
           loaded_tools: |
             create_pull_request_review
           auto_compaction: true
+          export_session_jsonl: true
           prompt: ${{ steps.prompt.outputs.content }}
+
+      - name: Aggregate token usage
+        id: usage
+        if: always()
+        env:
+          JSONL_PATH: ${{ steps.pi.outputs.session_jsonl_path }}
+          JOB_NAME: ${{ inputs.job_name }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          set -euo pipefail
+          USAGE_JSON='{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"reasoning":0,"total":0,"cost":0}'
+          if [ -n "${JSONL_PATH:-}" ] && [ -f "$JSONL_PATH" ]; then
+            USAGE_JSON=$(jq -cs '[.[] | (.usage // .message.usage) | select(. != null)] | {input: (map(.input // 0) | add), output: (map(.output // 0) | add), cacheRead: (map(.cacheRead // 0) | add), cacheWrite: (map(.cacheWrite // 0) | add), reasoning: (map(.reasoning // 0) | add), total: (map(.totalTokens // 0) | add), cost: (map(.cost.total // 0) | add)}' "$JSONL_PATH")
+          else
+            echo "::warning::Session JSONL export unavailable — token usage reported as zero."
+          fi
+          echo "usage=$USAGE_JSON" >> "$GITHUB_OUTPUT"
+
+          # Per-job summary shown on the Actions run page.
+          {
+            echo "## Token Usage"
+            echo ""
+            echo "**Job:** ${JOB_NAME} · **Model:** ${MODEL}"
+            echo ""
+            echo "| Input (fresh) | Cache read | Output | Cache write | Reasoning | Total | Cost |"
+            echo "|---|---|---|---|---|---|---|"
+            echo "| $(echo "$USAGE_JSON" | jq -r '.input') | $(echo "$USAGE_JSON" | jq -r '.cacheRead') | $(echo "$USAGE_JSON" | jq -r '.output') | $(echo "$USAGE_JSON" | jq -r '.cacheWrite') | $(echo "$USAGE_JSON" | jq -r '.reasoning') | $(echo "$USAGE_JSON" | jq -r '.total') | \$$(echo "$USAGE_JSON" | jq -r '.cost * 10000 | round | . / 10000') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Machine-readable copy for the PR-body aggregate table.
+          jq -n --arg job "$JOB_NAME" --arg model "$MODEL" --argjson usage "$USAGE_JSON" '{job: $job, model: $model, usage: $usage}' > "$RUNNER_TEMP/review-usage.json"
+
+      - name: Upload usage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-usage-${{ inputs.focus }}
+          path: ${{ runner.temp }}/review-usage.json
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Save review state
         if: success()
