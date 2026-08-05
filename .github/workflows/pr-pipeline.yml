@@ -2,7 +2,7 @@ name: PR Pipeline
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, labeled, unlabeled]
+    types: [opened, reopened, synchronize]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -66,12 +66,7 @@ jobs:
     needs: [has-go]
     if: |
       needs.has-go.outputs.go == 'true' &&
-      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code' && (
-        (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
-         !contains(github.event.pull_request.labels.*.name, 'no-review'))
-        ||
-        (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
-      )
+      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
     runs-on: ubuntu-latest
     outputs:
       existing_comments: ${{ steps.dismiss.outputs.existing_comments }}
@@ -93,12 +88,7 @@ jobs:
     needs: [has-go, dismiss-outdated]
     if: |
       needs.has-go.outputs.go == 'true' &&
-      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code' && (
-        (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
-         !contains(github.event.pull_request.labels.*.name, 'no-review'))
-        ||
-        (github.event.action == 'unlabeled' && github.event.label.name == 'no-review')
-      )
+      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
     strategy:
       fail-fast: false
       matrix:
@@ -133,7 +123,7 @@ jobs:
       opencode_api_key: ${{ secrets.OPENCODE_GO_API_KEY }}
 
   report-and-gate:
-    needs: [has-go, ci, verify-requirements, review]
+    needs: [has-go, ci, verify-requirements, dismiss-outdated, review]
     if: |
       always() &&
       !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
@@ -149,6 +139,9 @@ jobs:
           HAS_GO: ${{ needs.has-go.outputs.go || 'false' }}
           CHECKLIST: ${{ needs.verify-requirements.outputs.checklist }}
           NO_ISSUE: ${{ needs.verify-requirements.outputs.no-issue }}
+          HAS_GO_RESULT: ${{ needs.has-go.result }}
           CI_RESULT: ${{ needs.ci.result }}
           VERIFY_RESULT: ${{ needs.verify-requirements.result }}
+          DISMISS_RESULT: ${{ needs.dismiss-outdated.result }}
+          REVIEW_RESULT: ${{ needs.review.result }}
         run: .github/scripts/report-and-gate.sh

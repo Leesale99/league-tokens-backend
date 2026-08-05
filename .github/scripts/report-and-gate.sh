@@ -151,31 +151,35 @@ echo "PR body updated."
 # Section C2 — Set all labels
 # ═══════════════════════════════════════════════════════════════════════
 
-# Code review axis: no-review ↔ code-review-passed
+# Code review axis: review-skipped ↔ review-passed / review-failed
 if [ "$HAS_GO" != "true" ]; then
-  echo "No Go files — applying no-review, removing code-review-passed."
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label no-review 2>/dev/null || true
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label code-review-passed 2>/dev/null || true
+  echo "No Go files — applying review-skipped."
+  gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label review-skipped 2>/dev/null || true
+  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label review-passed 2>/dev/null || true
+  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label review-failed 2>/dev/null || true
 else
-  echo "Go files present — removing no-review."
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label no-review 2>/dev/null || true
+  echo "Go files present — removing review-skipped."
+  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label review-skipped 2>/dev/null || true
   if [ "$total_blocking" -eq 0 ]; then
-    echo "No blocking issues — applying code-review-passed."
-    gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label code-review-passed 2>/dev/null || true
+    echo "No blocking issues — applying review-passed."
+    gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label review-passed 2>/dev/null || true
+    gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label review-failed 2>/dev/null || true
   else
-    echo "$total_blocking blocking issue(s) — removing code-review-passed."
-    gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label code-review-passed 2>/dev/null || true
+    echo "$total_blocking blocking issue(s) — applying review-failed."
+    gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label review-failed 2>/dev/null || true
+    gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label review-passed 2>/dev/null || true
   fi
 fi
 
-# Requirements axis: no-requirements ↔ requirements-verified
+# Requirements axis: requirements-skipped ↔ requirements-verified / requirements-missing
 if [ "$NO_ISSUE" = "true" ]; then
-  echo "No linked issue — applying no-requirements, removing requirements-verified."
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label no-requirements 2>/dev/null || true
+  echo "No linked issue — applying requirements-skipped."
+  gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label requirements-skipped 2>/dev/null || true
   gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-verified 2>/dev/null || true
+  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-missing 2>/dev/null || true
 else
-  echo "Linked issue present — removing no-requirements."
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label no-requirements 2>/dev/null || true
+  echo "Linked issue present — removing requirements-skipped."
+  gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-skipped 2>/dev/null || true
 
   if [ -n "${CHECKLIST:-}" ]; then
     printf '%s\n' "$CHECKLIST" > "$tmp/checklist.txt"
@@ -183,12 +187,15 @@ else
     if [ "${UNCHECKED:-0}" -eq 0 ]; then
       echo "All requirements met — applying requirements-verified."
       gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label requirements-verified 2>/dev/null || true
+      gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-missing 2>/dev/null || true
     else
-      echo "$UNCHECKED requirement(s) not met — removing requirements-verified."
+      echo "$UNCHECKED requirement(s) not met — applying requirements-missing."
+      gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label requirements-missing 2>/dev/null || true
       gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-verified 2>/dev/null || true
     fi
   else
-    echo "No checklist content — removing requirements-verified."
+    echo "No checklist content — applying requirements-missing."
+    gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label requirements-missing 2>/dev/null || true
     gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-verified 2>/dev/null || true
   fi
 fi
@@ -197,28 +204,37 @@ fi
 # Section C3 — Gate check
 # ═══════════════════════════════════════════════════════════════════════
 
+HAS_GO_RESULT="${HAS_GO_RESULT:-skipped}"
 CI_RESULT="${CI_RESULT:-skipped}"
 VERIFY_RESULT="${VERIFY_RESULT:-skipped}"
+DISMISS_RESULT="${DISMISS_RESULT:-skipped}"
+REVIEW_RESULT="${REVIEW_RESULT:-skipped}"
 
-if [ "$CI_RESULT" != "success" ]; then
-  echo "::error::CI did not pass ($CI_RESULT)"
-  exit 1
-fi
+# Any pipeline job that failed (or timed out / was cancelled) blocks the merge,
+# even if the PR already carries passing labels. The user must re-trigger the
+# workflow and fix the failing job before the PR can merge.
+FAILED=""
+for RESULT in HAS_GO_RESULT CI_RESULT VERIFY_RESULT DISMISS_RESULT REVIEW_RESULT; do
+  VALUE="${!RESULT}"
+  if [ "$VALUE" != "success" ] && [ "$VALUE" != "skipped" ]; then
+    FAILED="${FAILED}${RESULT}=${VALUE} "
+  fi
+done
 
-if [ "$VERIFY_RESULT" != "success" ]; then
-  echo "::error::Requirements verification did not pass ($VERIFY_RESULT)"
+if [ -n "$FAILED" ]; then
+  echo "::error::One or more pipeline jobs failed: ${FAILED}— merge blocked until the workflow is re-run and all jobs pass."
   exit 1
 fi
 
 LABELS=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json labels -q '.labels[].name' 2>/dev/null || true)
 
-if ! echo "$LABELS" | grep -qE '^no-review$|^code-review-passed$'; then
-  echo "::error::Missing no-review or code-review-passed label"
+if ! echo "$LABELS" | grep -qE '^review-passed$|^review-skipped$'; then
+  echo "::error::Missing review-passed or review-skipped label (review-failed)"
   exit 1
 fi
 
-if ! echo "$LABELS" | grep -qE '^no-requirements$|^requirements-verified$'; then
-  echo "::error::Missing no-requirements or requirements-verified label"
+if ! echo "$LABELS" | grep -qE '^requirements-verified$|^requirements-skipped$'; then
+  echo "::error::Missing requirements-verified or requirements-skipped label (requirements-missing)"
   exit 1
 fi
 
