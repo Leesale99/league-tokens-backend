@@ -12,7 +12,7 @@ NO_ISSUE="${NO_ISSUE:-false}"
 
 # Phase tracking: a bare `set -e` death only prints a line number; this turns
 # it into a readable annotation naming the failing phase. (Fatal `set -u`
-# errors aren't catchable here and keep bash's native message.)
+# errors aren't catchable here and keep bash's native message.).
 PHASE="startup"
 on_error() {
   echo "::error::report-and-gate.sh failed in phase '${PHASE}' (line $1: $2)" >&2
@@ -54,7 +54,7 @@ if [ "$HAS_GO" = "true" ]; then
     | select(.line != null)
     | select(.id as \$cid | $excluded_ids | index(\$cid) == null)
     | {body: .body, path: .path, line: .line, id: .id}
-  " > "$comments_raw"
+  " >"$comments_raw"
 
   all_findings='[]'
 
@@ -67,10 +67,10 @@ if [ "$HAS_GO" = "true" ]; then
     first_line=$(echo "$body" | head -1)
 
     case "$first_line" in
-      *'**'*'blocking'*) sev="blocking" ;;
-      *'**'*'important'*) sev="important" ;;
-      *'**'*'suggestion'*) sev="suggestion" ;;
-      *) continue ;;
+    *'**'*'blocking'*) sev="blocking" ;;
+    *'**'*'important'*) sev="important" ;;
+    *'**'*'suggestion'*) sev="suggestion" ;;
+    *) continue ;;
     esac
 
     title=$(echo "$first_line" | sed -E 's/^[^—]*— //;s/\*\*$//')
@@ -94,7 +94,7 @@ if [ "$HAS_GO" = "true" ]; then
       '. + [{severity: $sev, path: $path, line: $line, id: $id, description: $desc}]' \
       2>/dev/null || echo "$all_findings")
 
-  done < "$comments_raw"
+  done <"$comments_raw"
 
   all_findings=$(echo "$all_findings" | jq -c '
     group_by({path, line}) |
@@ -132,7 +132,7 @@ if [ "$HAS_GO" = "true" ]; then
         out+=("<details>")
         out+=("<summary>$heading ($count)</summary>")
         out+=("")
-        while IFS= read -r l; do out+=("$l"); done <<< "$items"
+        while IFS= read -r l; do out+=("$l"); done <<<"$items"
         out+=("")
         out+=("</details>")
         out+=("")
@@ -182,7 +182,7 @@ if [ "$HAS_GO" = "true" ]; then
       if [ -n "$DISMISS_FOCUS" ] && [ "$DISMISS_FOCUS" != "[]" ]; then
         meta_lines+=("")
         meta_lines+=("Files in focus:")
-        while IFS= read -r l; do meta_lines+=("$l"); done <<< "$(echo "$DISMISS_FOCUS" | jq -r '.[] | "- `\(.path)` — \(.count) comment(s)"')"
+        while IFS= read -r l; do meta_lines+=("$l"); done <<<"$(echo "$DISMISS_FOCUS" | jq -r '.[] | "- `\(.path)` — \(.count) comment(s)"')"
       fi
       meta_lines+=("")
     fi
@@ -283,7 +283,7 @@ else
   gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-skipped 2>/dev/null || true
 
   if [ -n "${CHECKLIST:-}" ]; then
-    printf '%s\n' "$CHECKLIST" > "$tmp/checklist.txt"
+    printf '%s\n' "$CHECKLIST" >"$tmp/checklist.txt"
     UNCHECKED=$(grep -F -c '[ ]' "$tmp/checklist.txt" || true)
     if [ "${UNCHECKED:-0}" -eq 0 ]; then
       echo "All requirements met — applying requirements-verified."
