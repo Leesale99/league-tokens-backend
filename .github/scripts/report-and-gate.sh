@@ -10,12 +10,23 @@ trap 'rm -rf "$tmp"' EXIT
 HAS_GO="${HAS_GO:-false}"
 NO_ISSUE="${NO_ISSUE:-false}"
 
+# Phase tracking: a bare `set -e` death only prints a line number; this turns
+# it into a readable annotation naming the failing phase. (Fatal `set -u`
+# errors aren't catchable here and keep bash's native message.)
+PHASE="startup"
+on_error() {
+  echo "::error::report-and-gate.sh failed in phase '${PHASE}' (line $1: $2)" >&2
+}
+trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
+
 # ═══════════════════════════════════════════════════════════════════════
 # Section B1 — Aggregate review comments (if Go files present)
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="B1: aggregate review comments"
 total_blocking=0
 review_section=""
+meta_section=""
 
 if [ "$HAS_GO" = "true" ]; then
   echo "Aggregating review comments ..."
@@ -197,6 +208,7 @@ fi
 # Section B2 — Build combined report
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="B2: build combined report"
 current_body=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json body -q '.body')
 clean_body="$current_body"
 
@@ -231,6 +243,7 @@ fi
 # Section C1 — Publish combined report to PR body
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="C1: publish PR body"
 gh pr edit "$PR_NUMBER" --repo "$REPO" --body "$new_body"
 echo "PR body updated."
 
@@ -238,6 +251,7 @@ echo "PR body updated."
 # Section C2 — Set all labels
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="C2: set labels"
 # Code review axis: review-skipped ↔ review-passed / review-failed
 if [ "$HAS_GO" != "true" ]; then
   echo "No Go files — applying review-skipped."
@@ -291,6 +305,7 @@ fi
 # Section C3 — Gate check
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="C3: merge gate check"
 HAS_GO_RESULT="${HAS_GO_RESULT:-skipped}"
 CI_RESULT="${CI_RESULT:-skipped}"
 VERIFY_RESULT="${VERIFY_RESULT:-skipped}"
