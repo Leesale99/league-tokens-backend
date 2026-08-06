@@ -8,7 +8,9 @@ on:
 
 concurrency:
   group: code-agent-${{ github.event.issue.number || github.event.pull_request.number }}
-  cancel-in-progress: false
+  # Serialize /code runs per PR: two comments posted close together would
+  # otherwise race on the same checkout and second-guess each other's edits.
+  cancel-in-progress: true
 
 jobs:
   code-agent:
@@ -45,6 +47,21 @@ jobs:
           echo "$TASK" >> "$GITHUB_OUTPUT"
           echo "TASK_EOF" >> "$GITHUB_OUTPUT"
 
+          # The /code anchor: path + line + diff hunk of the inline comment
+          # that triggered this run. This is what "this comment" refers to,
+          # even when the /code is a top-level comment (no parent to derive
+          # thread context from). Without it the agent has to go hunting.
+          COMMENT_PATH=$(jq -r '.comment.path // empty' "$GITHUB_EVENT_PATH")
+          COMMENT_LINE=$(jq -r '.comment.line // .comment.original_line // empty' "$GITHUB_EVENT_PATH")
+          COMMENT_HUNK=$(jq -r '.comment.diff_hunk // empty' "$GITHUB_EVENT_PATH")
+          if [ -n "$COMMENT_PATH" ] && [ -n "$COMMENT_LINE" ]; then
+            echo "anchor=$COMMENT_PATH:$COMMENT_LINE" >> "$GITHUB_OUTPUT"
+            echo "anchor_hunk<<HUNK_EOF" >> "$GITHUB_OUTPUT"
+            echo "$COMMENT_HUNK" | head -c 3000 >> "$GITHUB_OUTPUT"
+            echo "" >> "$GITHUB_OUTPUT"
+            echo "HUNK_EOF" >> "$GITHUB_OUTPUT"
+          fi
+
           IN_REPLY_TO=$(jq -r '.comment.in_reply_to_id // 0' "$GITHUB_EVENT_PATH")
           echo "in_reply_to=$IN_REPLY_TO" >> "$GITHUB_OUTPUT"
           if [ "$IN_REPLY_TO" != "0" ] && [ "$IN_REPLY_TO" != "null" ]; then
@@ -60,22 +77,16 @@ jobs:
         id: pi
         uses: shaftoe/pi-coding-agent-action@v2
         with:
-          # GITHUB_TOKEN, not a PAT: events triggered by GITHUB_TOKEN do not
-          # create new workflow runs, so the agent's reply comment won't spawn
-          # a second (skipped) run after each /code. Requires contents: write
-          # on the job to push via update_pull_request.
+          # GITHUB_TOKEN (not a PAT): the agent's reply comment is posted as
+          # github-actions[bot], so it can't spawn a second workflow run.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           provider: oc-sdk-go
           model: deepseek-v4-flash
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
           trigger: /code
-          # high is the only enabled thinking level for deepseek-v4-flash on
-          # oc-sdk-go (low/medium are null in thinkingLevelMap). The /code
-          # task — judging whether a review comment is outdated and how it
-          # fits the surrounding code — benefits from explicit reasoning, and
-          # the scope is small so reasoning tokens are cheap. Reasoning stays
-          # internal; the strict Reply format keeps the posted comment clean.
-          thinking_level: high
+          # Off: the task is small and single-anchored; explicit reasoning on
+          # an ambiguous task caused runaway deliberation and a garbled reply.
+          thinking_level: off
           auto_compaction: true
           export_session_jsonl: true
           loaded_tools: |
@@ -89,6 +100,12 @@ jobs:
             You were triggered by a `/code` command.
             REPLY IN THE SAME COMMENT THREAD.
 
+            ## Target anchor (the code this /code refers to)
+            `${{ steps.thread-context.outputs.anchor }}`
+            ```diff
+            ${{ steps.thread-context.outputs.anchor_hunk }}
+            ```
+
             ## Thread Context (the comment being replied to)
             ${{ steps.thread-context.outputs.parent_body }}
 
@@ -97,10 +114,14 @@ jobs:
 
             ## What to do
 
-            1. Thread Context tells you what needs to change.
-            2. Make changes with `read`/`write`/`edit`/`grep`. Use `bash` only as a last resort when other tools aren't enough.
+            1. The task concerns ONLY the file and lines in Target anchor. Do NOT explore other files, the PR thread, or repository history.
+            2. Make the change with `read`/`write`/`edit`/`grep`. Use `bash` only as a last resort when other tools aren't enough.
             3. Push via `update_pull_request`.
-            4. Reply with a 1-line summary. 2 rounds max.
+            4. Reply with a 1-line summary.
+
+            ## Hard limit
+
+            STOP after 2 tool rounds. If the task is not complete by then, reply with what you found and what is blocking you — do not keep calling tools.
 
             ## Reply format (strict)
 
@@ -116,22 +137,20 @@ jobs:
 
       - name: Aggregate token usage
         if: always()
-        env:
-          JSONL_PATH: ${{ steps.pi.outputs.session_jsonl_path }}
         run: |
           set -euo pipefail
-          USAGE_JSON='{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"reasoning":0,"total":0,"cost":0}'
-          if [ -n "${JSONL_PATH:-}" ] && [ -f "$JSONL_PATH" ]; then
-            USAGE_JSON=$(jq -cs '[.[] | (.usage // .message.usage) | select(. != null)] | {input: (map(.input // 0) | add), output: (map(.output // 0) | add), cacheRead: (map(.cacheRead // 0) | add), cacheWrite: (map(.cacheWrite // 0) | add), reasoning: (map(.reasoning // 0) | add), total: (map(.totalTokens // 0) | add), cost: (map(.cost.total // 0) | add)}' "$JSONL_PATH")
-          else
-            echo "::warning::Session JSONL export unavailable — token usage reported as zero."
-          fi
+          # The action reports true session usage via outputs (from
+          # pi.getSessionStats()); the exported JSONL lands in a temp dir that
+          # the host step can't reliably read, so we don't parse it.
+          INPUT_TOKENS="${{ steps.pi.outputs.input_tokens }}"
+          OUTPUT_TOKENS="${{ steps.pi.outputs.output_tokens }}"
+          COST="${{ steps.pi.outputs.cost }}"
           {
             echo "## Token Usage"
             echo ""
             echo "**Job:** Code Agent · **Model:** deepseek-v4-flash"
             echo ""
-            echo "| Input (fresh) | Cache read | Output | Cache write | Reasoning | Total | Cost |"
-            echo "|---|---|---|---|---|---|---|"
-            echo "| $(echo "$USAGE_JSON" | jq -r '.input') | $(echo "$USAGE_JSON" | jq -r '.cacheRead') | $(echo "$USAGE_JSON" | jq -r '.output') | $(echo "$USAGE_JSON" | jq -r '.cacheWrite') | $(echo "$USAGE_JSON" | jq -r '.reasoning') | $(echo "$USAGE_JSON" | jq -r '.total') | \$$(echo "$USAGE_JSON" | jq -r '.cost * 10000 | round | . / 10000') |"
+            echo "| Input (fresh) | Output | Cost |"
+            echo "|---|---|---|"
+            echo "| ${INPUT_TOKENS:-0} | ${OUTPUT_TOKENS:-0} | \$${COST:-0} |"
           } >> "$GITHUB_STEP_SUMMARY"
