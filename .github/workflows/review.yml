@@ -134,7 +134,7 @@ jobs:
             --provider oc-sdk-go \
             --model "${{ inputs.model }}" \
             --api-key "$OPENCODE_GO_API_KEY" \
-            --thinking off \
+            --thinking high \
             -a \
             -e .github/extensions/github-review.ts \
             --tools read,bash,edit,write,grep,find,ls,create_pull_request_review \

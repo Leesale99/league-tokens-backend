@@ -40,3 +40,14 @@ cat > ~/.pi/agent/models.json << 'MODELS_EOF'
   }
 }
 MODELS_EOF
+
+# Default thinking level for all pi invocations unless a job overrides it
+# explicitly (review.yml passes --thinking high; the code-agent action passes
+# thinking_level: high). Kept merge-safe so we never clobber a runner's
+# existing global settings.
+if [ -f ~/.pi/agent/settings.json ]; then
+  jq '.defaultThinkingLevel = "high"' ~/.pi/agent/settings.json > ~/.pi/agent/settings.json.tmp && \
+    mv ~/.pi/agent/settings.json.tmp ~/.pi/agent/settings.json
+else
+  echo '{"defaultThinkingLevel": "high"}' > ~/.pi/agent/settings.json
+fi

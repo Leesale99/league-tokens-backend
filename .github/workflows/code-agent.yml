@@ -13,7 +13,7 @@ concurrency:
 jobs:
   code-agent:
     if: |
-      github.actor != 'aleksrdvn-code' && (
+      !endsWith(github.actor, '[bot]') && (
         contains(github.event.comment.body, ' /code') ||
         startsWith(github.event.comment.body, '/code')
       )
@@ -38,7 +38,7 @@ jobs:
       - name: Fetch thread context
         id: thread-context
         env:
-          GH_TOKEN: ${{ secrets.CODE_BOT_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           TASK=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH" | sed 's|^/code[[:space:]]*||')
           echo "task<<TASK_EOF" >> "$GITHUB_OUTPUT"
@@ -60,11 +60,22 @@ jobs:
         id: pi
         uses: shaftoe/pi-coding-agent-action@v2
         with:
-          github_token: ${{ secrets.CODE_BOT_PAT }}
+          # GITHUB_TOKEN, not a PAT: events triggered by GITHUB_TOKEN do not
+          # create new workflow runs, so the agent's reply comment won't spawn
+          # a second (skipped) run after each /code. Requires contents: write
+          # on the job to push via update_pull_request.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           provider: oc-sdk-go
           model: deepseek-v4-flash
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
           trigger: /code
+          # high is the only enabled thinking level for deepseek-v4-flash on
+          # oc-sdk-go (low/medium are null in thinkingLevelMap). The /code
+          # task — judging whether a review comment is outdated and how it
+          # fits the surrounding code — benefits from explicit reasoning, and
+          # the scope is small so reasoning tokens are cheap. Reasoning stays
+          # internal; the strict Reply format keeps the posted comment clean.
+          thinking_level: high
           auto_compaction: true
           export_session_jsonl: true
           loaded_tools: |
@@ -76,7 +87,7 @@ jobs:
             update_pull_request
           prompt: |
             You were triggered by a `/code` command.
-            REPLY IN THE SAME COMMENT THREAD. One sentence max.
+            REPLY IN THE SAME COMMENT THREAD.
 
             ## Thread Context (the comment being replied to)
             ${{ steps.thread-context.outputs.parent_body }}
@@ -90,6 +101,18 @@ jobs:
             2. Make changes with `read`/`write`/`edit`/`grep`. Use `bash` only as a last resort when other tools aren't enough.
             3. Push via `update_pull_request`.
             4. Reply with a 1-line summary. 2 rounds max.
+
+            ## Reply format (strict)
+
+            Your reply is posted as a comment in the PR thread and read by a human. It must be:
+
+            - ONE sentence. No bullet points, no headings, no code blocks.
+            - Result-only: state what you changed (or that no change was needed, in a few words).
+            - NEVER narrate your process. Do not start with "Let me...", do not recap what the thread said, do not list what you verified step by step, do not include any reasoning or deliberation.
+
+            Examples:
+            - "Fixed — duplicate `Config` block removed from `internal/feed/config.go`."
+            - "No change needed — `schedule.Config.Validate()` already rejects an empty `provider_api_key` (covered by an existing test)."
 
       - name: Aggregate token usage
         if: always()

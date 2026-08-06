@@ -16,7 +16,6 @@ NO_ISSUE="${NO_ISSUE:-false}"
 
 total_blocking=0
 review_section=""
-usage_section=""
 
 if [ "$HAS_GO" = "true" ]; then
   echo "Aggregating review comments ..."
@@ -106,8 +105,6 @@ if [ "$HAS_GO" = "true" ]; then
   out+=("")
   out+=("## AI Review Summary")
   out+=("")
-  out+=("🔴 ${total_blocking} blocking · 🟠 ${total_important} important · 🟡 ${total_suggestion} suggestion")
-  out+=("")
 
   if [ "$total_blocking" -eq 0 ] && [ "$total_important" -eq 0 ] && [ "$total_suggestion" -eq 0 ]; then
     out+=("No issues found.")
@@ -132,29 +129,62 @@ if [ "$HAS_GO" = "true" ]; then
     done
   fi
 
-  # Token usage per review job (from uploaded review-usage-* artifacts).
+  # Pipeline metadata: token usage per review job (from uploaded
+  # review-usage-* artifacts) plus dismiss-outdated focus info showing what
+  # this round's review was focused on and what was skipped. Collapsed by
+  # default; the "View workflow" link sits at the bottom of the section.
   USAGE_DIR="${USAGE_DIR:-}"
   usage_rows=""
   if [ -n "$USAGE_DIR" ] && [ -d "$USAGE_DIR" ]; then
     usage_rows=$(jq -sr 'sort_by(.job) | .[] | "| \(.job) | \(.model) | \(.usage.input) | \(.usage.cacheRead) | \(.usage.output) | \(.usage.cacheWrite) | \(.usage.total) | $\((.usage.cost * 10000 | round) / 10000) |"' "$USAGE_DIR"/*/review-usage.json 2>/dev/null || true)
   fi
-  usage_section=""
-  if [ -n "$usage_rows" ]; then
-    usage_section=$(printf '%s\n' \
-      "<!-- token-usage-start -->" \
-      "" \
-      "## Token Usage" \
-      "" \
-      "| Job | Model | Input | Cache read | Output | Cache write | Total | Cost |" \
-      "|---|---|---|---|---|---|---|---|" \
-      "$usage_rows" \
-      "" \
-      "<!-- token-usage-end -->")
+
+  DISMISS_FOUND="${DISMISS_FOUND:-}"
+  DISMISS_DISMISSED="${DISMISS_DISMISSED:-}"
+  DISMISS_REMAINING="${DISMISS_REMAINING:-}"
+  DISMISS_FOCUS="${DISMISS_FOCUS:-}"
+
+  meta_section=""
+  if [ -n "$usage_rows" ] || [ -n "$DISMISS_FOUND" ]; then
+    meta_lines=()
+    meta_lines+=("<!-- pipeline-meta-start -->")
+    meta_lines+=("")
+    meta_lines+=("<details>")
+    meta_lines+=("<summary>Last review round</summary>")
+    meta_lines+=("")
+
+    if [ -n "$usage_rows" ]; then
+      meta_lines+=("### Token Usage")
+      meta_lines+=("")
+      meta_lines+=("| Job | Model | Input | Cache read | Output | Cache write | Total | Cost |")
+      meta_lines+=("|---|---|---|---|---|---|---|---|")
+      meta_lines+=("$usage_rows")
+      meta_lines+=("")
+    fi
+
+    if [ -n "$DISMISS_FOUND" ]; then
+      meta_lines+=("### Review focus")
+      meta_lines+=("")
+      meta_lines+=("- **Found:** $DISMISS_FOUND previous comment(s)")
+      meta_lines+=("- **Skipped:** $DISMISS_DISMISSED outdated comment(s) (file+line changed)")
+      meta_lines+=("- **Kept:** $DISMISS_REMAINING comment(s) still relevant — focus of this round")
+      if [ -n "$DISMISS_FOCUS" ] && [ "$DISMISS_FOCUS" != "[]" ]; then
+        meta_lines+=("")
+        meta_lines+=("Files in focus:")
+        while IFS= read -r l; do meta_lines+=("$l"); done <<< "$(echo "$DISMISS_FOCUS" | jq -r '.[] | "- `\(.path)` — \(.count) comment(s)"')"
+      fi
+      meta_lines+=("")
+    fi
+
+    meta_lines+=("[View workflow →](https://github.com/$REPO/actions/runs/$RUN_ID)")
+    meta_lines+=("")
+    meta_lines+=("</details>")
+    meta_lines+=("")
+    meta_lines+=("<!-- pipeline-meta-end -->")
+
+    meta_section=$(printf '%s\n' "${meta_lines[@]}")
   fi
 
-  out+=("---")
-  out+=("[View workflow →](https://github.com/$REPO/actions/runs/$RUN_ID)")
-  out+=("")
   out+=("<!-- review-summary-end -->")
 
   review_section=$(printf '%s\n' "${out[@]}")
@@ -178,13 +208,13 @@ if echo "$clean_body" | grep -q '<!-- requirements-review-start -->'; then
   clean_body=$(echo "$clean_body" | sed '/<!-- requirements-review-start -->/,/<!-- requirements-review-end -->/d')
 fi
 
-if echo "$clean_body" | grep -q '<!-- token-usage-start -->'; then
-  clean_body=$(echo "$clean_body" | sed '/<!-- token-usage-start -->/,/<!-- token-usage-end -->/d')
+if echo "$clean_body" | grep -q '<!-- pipeline-meta-start -->'; then
+  clean_body=$(echo "$clean_body" | sed '/<!-- pipeline-meta-start -->/,/<!-- pipeline-meta-end -->/d')
 fi
 
 new_body="$clean_body"
 
-# Section order: 1) Requirements summary, 2) AI review summary, 3) Token usage.
+# Section order: 1) Requirements summary, 2) AI review summary, 3) Pipeline metadata.
 if [ "$NO_ISSUE" != "true" ] && [ -n "${CHECKLIST:-}" ]; then
   new_body="${new_body}"$'\n\n'"${CHECKLIST}"
 fi
@@ -193,8 +223,8 @@ if [ -n "$review_section" ]; then
   new_body="${new_body}"$'\n\n'"${review_section}"
 fi
 
-if [ -n "$usage_section" ]; then
-  new_body="${new_body}"$'\n\n'"${usage_section}"
+if [ -n "$meta_section" ]; then
+  new_body="${new_body}"$'\n\n'"${meta_section}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════

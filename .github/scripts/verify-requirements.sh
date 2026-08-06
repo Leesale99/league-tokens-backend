@@ -78,7 +78,9 @@ RESPONSE=$(curl -s "https://opencode.ai/zen/go/v1/chat/completions" \
       messages: [
         {role: "system", content: $system},
         {role: "user", content: $prompt}
-      ]
+      ],
+      thinking: {type: "enabled"},
+      reasoning_effort: "high"
     }')"
 )
 
@@ -99,7 +101,7 @@ echo "AI analysis received (${#CONTENT} chars)."
   echo "checklist<<CHECKLIST_EOF"
   echo "<!-- requirements-review-start -->"
   echo ""
-  echo "## Requirements Verification — Issue #$ISSUE_NUM"
+  echo "## Requirements Verification"
   echo ""
   printf '%s\n' "$CONTENT"
   echo ""
