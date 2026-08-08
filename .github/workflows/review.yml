@@ -22,14 +22,6 @@ on:
       repo:
         required: true
         type: string
-      workflow_run_id:
-        required: true
-        type: string
-      existing_comments:
-        required: false
-        type: string
-        default: ""
-        description: JSON array of {path, line} from dismissed-outdated comments
     secrets:
       opencode_api_key:
         required: true
@@ -38,14 +30,16 @@ jobs:
   review:
     name: ${{ inputs.job_name }}
     runs-on: ubuntu-latest
+    # Read-only on purpose: review jobs only read the diff and emit findings
+    # as an artifact. All PR writes (comments, body, labels) happen in the
+    # report-and-gate job — the single writer, so posting is race-free.
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
     env:
       PR_NUMBER: ${{ inputs.pr_number }}
       REPO: ${{ inputs.repo }}
-      WORKFLOW_RUN_ID: ${{ inputs.workflow_run_id }}
-      OUTDATED_COMMENTS: ${{ inputs.existing_comments }}
+      FINDINGS_FILE: ${{ runner.temp }}/review-findings.json
     steps:
       - uses: actions/checkout@v6
         with:
@@ -101,6 +95,8 @@ jobs:
             gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null | head -n 500 >> "$RUNNER_TEMP/review-prompt.md" || true
           fi
           printf '```\n' >> "$RUNNER_TEMP/review-prompt.md"
+          # Give the model the exact findings output path (expanded, not literal).
+          printf '\n## Findings output\n\nWrite your findings JSON array to `%s` using the write tool. See _common.md for the schema.\n' "$FINDINGS_FILE" >> "$RUNNER_TEMP/review-prompt.md"
 
       - name: Configure oc-sdk-go custom provider
         run: bash .github/scripts/configure-provider.sh
@@ -116,11 +112,10 @@ jobs:
           OPENCODE_GO_API_KEY: ${{ secrets.opencode_api_key }}
         run: |
           set -euo pipefail
-          # Run pi directly (no shaftoe/pi-coding-agent-action): the CLI never
-          # posts a final comment on the PR, so no cleanup step is needed.
-          # The create_pull_request_review tool comes from our own extension.
-          # Load the review skills explicitly (deterministic, no trust/approval
-          # dependency on .pi/skills auto-discovery).
+          # pi never writes to the PR: the model's only output channel is the
+          # findings file (FINDINGS_FILE). Load the review skills explicitly
+          # (deterministic, no trust/approval dependency on .pi/skills
+          # auto-discovery).
           SKILL_ARGS=""
           for SKILL in $(echo "${{ inputs.skills }}" | tr ',' ' '); do
             if [ -d ".pi/skills/$SKILL" ]; then
@@ -136,8 +131,7 @@ jobs:
             --api-key "$OPENCODE_GO_API_KEY" \
             --thinking high \
             -a \
-            -e .github/extensions/github-review.ts \
-            --tools read,bash,edit,write,grep,find,ls,create_pull_request_review \
+            --tools read,bash,edit,write,grep,find,ls \
             $SKILL_ARGS \
             "@$RUNNER_TEMP/review-prompt.md" \
             > "$RUNNER_TEMP/pi-session.jsonl" 2> "$RUNNER_TEMP/pi-stderr.log"
@@ -188,6 +182,25 @@ jobs:
         with:
           name: review-usage-${{ inputs.focus }}
           path: ${{ runner.temp }}/review-usage.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Validate findings output
+        if: always()
+        run: |
+          if [ -f "$FINDINGS_FILE" ] && jq -e 'type == "array"' "$FINDINGS_FILE" >/dev/null 2>&1; then
+            echo "::notice::Review job emitted $(jq 'length' "$FINDINGS_FILE") finding(s)."
+          else
+            echo "::warning::No valid findings JSON from review job — emitting empty array."
+            echo '[]' > "$FINDINGS_FILE"
+          fi
+
+      - name: Upload findings artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-findings-${{ inputs.focus }}
+          path: ${{ runner.temp }}/review-findings.json
           if-no-files-found: ignore
           retention-days: 1
 

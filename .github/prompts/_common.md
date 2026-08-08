@@ -1,28 +1,33 @@
 ## Rules
 
-1. Review the diff. Post ONE review via `create_pull_request_review` (event: COMMENT).
-2. **Review body must be EMPTY.** All findings as inline comments only.
-3. Your final text response is discarded. Say nothing, or `OK` if required.
+1. Review the diff. Do NOT post comments or call GitHub APIs — your token is read-only.
+2. Collect ALL findings, then write them to the findings file (exact path given at the end of this prompt) using the write tool.
+3. Write the ENTIRE findings array in ONE write call at the end of your review. If you have no findings, write `[]`.
+4. Your final text response is discarded. Say nothing, or `OK` if required.
 
-## Inline comments
+## Findings JSON schema
 
-Use this exact format for every inline comment. Do not vary the severity label or emoji.
-
-```
-**🔴 blocking — title**
-
-1-2 sentences. Use ```suggestion blocks for code fixes.
+```json
+[
+  {
+    "severity": "blocking",
+    "path": "internal/feed/config.go",
+    "line": 39,
+    "title": "feed config does not compile",
+    "body": "**🔴 blocking — feed config does not compile**\n\n1-2 sentences. Use ```suggestion blocks for code fixes."
+  }
+]
 ```
 
 - `severity` — one of: `blocking` 🔴, `important` 🟠, `suggestion` 🟡
-- Always bold the entire first line, prefixed with the severity emoji badge:
-  - `**🔴 blocking — title**`
-  - `**🟠 important — title**`
-  - `**🟡 suggestion — title**`
+- `title` — short summary WITHOUT the severity prefix
+- `line` — line number in the current diff (RIGHT side). Must exist in the diff.
+- `body` — full markdown comment; first line must be exactly `**<emoji> <severity> — <title>**`
+- The `path` and `line` must reference the diff provided in this prompt, not the full file.
 
-## Dedup
+## Severity
 
-`OUTDATED_COMMENTS` is a JSON array of `{"path","line"}` from dismissed comments. Skip those lines.
+Per-focus prompts define the severity scale. Do not vary the label or emoji.
 
 ## Token budget
 

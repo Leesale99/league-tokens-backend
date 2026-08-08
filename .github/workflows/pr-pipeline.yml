@@ -62,34 +62,12 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: .github/scripts/verify-requirements.sh
 
-  dismiss-outdated:
-    needs: [has-go]
-    if: |
-      needs.has-go.outputs.go == 'true' &&
-      !endsWith(github.actor, '[bot]')
-    runs-on: ubuntu-latest
-    outputs:
-      existing_comments: ${{ steps.dismiss.outputs.existing_comments }}
-      found: ${{ steps.dismiss.outputs.found }}
-      dismissed: ${{ steps.dismiss.outputs.dismissed }}
-      remaining: ${{ steps.dismiss.outputs.remaining }}
-      focus: ${{ steps.dismiss.outputs.focus }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - id: dismiss
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          .github/scripts/dismiss-outdated-reviews.sh
-          ${{ github.event.pull_request.number || inputs.pr_number }}
-          ${{ github.repository }}
-          ${{ github.event.pull_request.base.ref || 'main' }}
-
+  # Each review focus runs pi independently and emits its findings as an
+  # artifact. Jobs are read-only (no comments); report-and-gate is the single
+  # writer that aggregates everything into one consolidated review.
   review:
     name: ${{ matrix.job_name }}
-    needs: [has-go, dismiss-outdated]
+    needs: [has-go]
     if: |
       needs.has-go.outputs.go == 'true' &&
       !endsWith(github.actor, '[bot]')
@@ -121,13 +99,11 @@ jobs:
       job_name: ${{ matrix.job_name }}
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       repo: ${{ github.repository }}
-      workflow_run_id: ${{ github.run_id }}
-      existing_comments: ${{ needs.dismiss-outdated.outputs.existing_comments }}
     secrets:
       opencode_api_key: ${{ secrets.OPENCODE_GO_API_KEY }}
 
   report-and-gate:
-    needs: [has-go, ci, verify-requirements, dismiss-outdated, review]
+    needs: [has-go, ci, verify-requirements, review]
     if: |
       always() &&
       !endsWith(github.actor, '[bot]')
@@ -141,6 +117,13 @@ jobs:
         with:
           pattern: review-usage-*
           path: ${{ runner.temp }}/review-usage
+      - name: Download review findings artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: review-findings-*
+          path: ${{ runner.temp }}/review-findings
       - name: Report & gate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -151,13 +134,9 @@ jobs:
           CHECKLIST: ${{ needs.verify-requirements.outputs.checklist }}
           NO_ISSUE: ${{ needs.verify-requirements.outputs.no-issue }}
           USAGE_DIR: ${{ runner.temp }}/review-usage
+          FINDINGS_DIR: ${{ runner.temp }}/review-findings
           HAS_GO_RESULT: ${{ needs.has-go.result }}
           CI_RESULT: ${{ needs.ci.result }}
           VERIFY_RESULT: ${{ needs.verify-requirements.result }}
-          DISMISS_RESULT: ${{ needs.dismiss-outdated.result }}
           REVIEW_RESULT: ${{ needs.review.result }}
-          DISMISS_FOUND: ${{ needs.dismiss-outdated.outputs.found }}
-          DISMISS_DISMISSED: ${{ needs.dismiss-outdated.outputs.dismissed }}
-          DISMISS_REMAINING: ${{ needs.dismiss-outdated.outputs.remaining }}
-          DISMISS_FOCUS: ${{ needs.dismiss-outdated.outputs.focus }}
         run: .github/scripts/report-and-gate.sh
