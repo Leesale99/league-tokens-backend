@@ -10,13 +10,23 @@ trap 'rm -rf "$tmp"' EXIT
 HAS_GO="${HAS_GO:-false}"
 NO_ISSUE="${NO_ISSUE:-false}"
 
+# Phase tracking: a bare `set -e` death only prints a line number; this turns
+# it into a readable annotation naming the failing phase. (Fatal `set -u`
+# errors aren't catchable here and keep bash's native message.).
+PHASE="startup"
+on_error() {
+  echo "::error::report-and-gate.sh failed in phase '${PHASE}' (line $1: $2)" >&2
+}
+trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
+
 # ═══════════════════════════════════════════════════════════════════════
 # Section B1 — Aggregate review comments (if Go files present)
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="B1: aggregate review comments"
 total_blocking=0
 review_section=""
-usage_section=""
+meta_section=""
 
 if [ "$HAS_GO" = "true" ]; then
   echo "Aggregating review comments ..."
@@ -44,7 +54,7 @@ if [ "$HAS_GO" = "true" ]; then
     | select(.line != null)
     | select(.id as \$cid | $excluded_ids | index(\$cid) == null)
     | {body: .body, path: .path, line: .line, id: .id}
-  " > "$comments_raw"
+  " >"$comments_raw"
 
   all_findings='[]'
 
@@ -57,10 +67,10 @@ if [ "$HAS_GO" = "true" ]; then
     first_line=$(echo "$body" | head -1)
 
     case "$first_line" in
-      *'**'*'blocking'*) sev="blocking" ;;
-      *'**'*'important'*) sev="important" ;;
-      *'**'*'suggestion'*) sev="suggestion" ;;
-      *) continue ;;
+    *'**'*'blocking'*) sev="blocking" ;;
+    *'**'*'important'*) sev="important" ;;
+    *'**'*'suggestion'*) sev="suggestion" ;;
+    *) continue ;;
     esac
 
     title=$(echo "$first_line" | sed -E 's/^[^—]*— //;s/\*\*$//')
@@ -84,7 +94,7 @@ if [ "$HAS_GO" = "true" ]; then
       '. + [{severity: $sev, path: $path, line: $line, id: $id, description: $desc}]' \
       2>/dev/null || echo "$all_findings")
 
-  done < "$comments_raw"
+  done <"$comments_raw"
 
   all_findings=$(echo "$all_findings" | jq -c '
     group_by({path, line}) |
@@ -106,8 +116,6 @@ if [ "$HAS_GO" = "true" ]; then
   out+=("")
   out+=("## AI Review Summary")
   out+=("")
-  out+=("🔴 ${total_blocking} blocking · 🟠 ${total_important} important · 🟡 ${total_suggestion} suggestion")
-  out+=("")
 
   if [ "$total_blocking" -eq 0 ] && [ "$total_important" -eq 0 ] && [ "$total_suggestion" -eq 0 ]; then
     out+=("No issues found.")
@@ -124,7 +132,7 @@ if [ "$HAS_GO" = "true" ]; then
         out+=("<details>")
         out+=("<summary>$heading ($count)</summary>")
         out+=("")
-        while IFS= read -r l; do out+=("$l"); done <<< "$items"
+        while IFS= read -r l; do out+=("$l"); done <<<"$items"
         out+=("")
         out+=("</details>")
         out+=("")
@@ -132,29 +140,62 @@ if [ "$HAS_GO" = "true" ]; then
     done
   fi
 
-  # Token usage per review job (from uploaded review-usage-* artifacts).
+  # Pipeline metadata: token usage per review job (from uploaded
+  # review-usage-* artifacts) plus dismiss-outdated focus info showing what
+  # this round's review was focused on and what was skipped. Collapsed by
+  # default; the "View workflow" link sits at the bottom of the section.
   USAGE_DIR="${USAGE_DIR:-}"
   usage_rows=""
   if [ -n "$USAGE_DIR" ] && [ -d "$USAGE_DIR" ]; then
     usage_rows=$(jq -sr 'sort_by(.job) | .[] | "| \(.job) | \(.model) | \(.usage.input) | \(.usage.cacheRead) | \(.usage.output) | \(.usage.cacheWrite) | \(.usage.total) | $\((.usage.cost * 10000 | round) / 10000) |"' "$USAGE_DIR"/*/review-usage.json 2>/dev/null || true)
   fi
-  usage_section=""
-  if [ -n "$usage_rows" ]; then
-    usage_section=$(printf '%s\n' \
-      "<!-- token-usage-start -->" \
-      "" \
-      "## Token Usage" \
-      "" \
-      "| Job | Model | Input | Cache read | Output | Cache write | Total | Cost |" \
-      "|---|---|---|---|---|---|---|---|" \
-      "$usage_rows" \
-      "" \
-      "<!-- token-usage-end -->")
+
+  DISMISS_FOUND="${DISMISS_FOUND:-}"
+  DISMISS_DISMISSED="${DISMISS_DISMISSED:-}"
+  DISMISS_REMAINING="${DISMISS_REMAINING:-}"
+  DISMISS_FOCUS="${DISMISS_FOCUS:-}"
+
+  meta_section=""
+  if [ -n "$usage_rows" ] || [ -n "$DISMISS_FOUND" ]; then
+    meta_lines=()
+    meta_lines+=("<!-- pipeline-meta-start -->")
+    meta_lines+=("")
+    meta_lines+=("<details>")
+    meta_lines+=("<summary>Last review round</summary>")
+    meta_lines+=("")
+
+    if [ -n "$usage_rows" ]; then
+      meta_lines+=("### Token Usage")
+      meta_lines+=("")
+      meta_lines+=("| Job | Model | Input | Cache read | Output | Cache write | Total | Cost |")
+      meta_lines+=("|---|---|---|---|---|---|---|---|")
+      meta_lines+=("$usage_rows")
+      meta_lines+=("")
+    fi
+
+    if [ -n "$DISMISS_FOUND" ]; then
+      meta_lines+=("### Review focus")
+      meta_lines+=("")
+      meta_lines+=("- **Found:** $DISMISS_FOUND previous comment(s)")
+      meta_lines+=("- **Skipped:** $DISMISS_DISMISSED outdated comment(s) (file+line changed)")
+      meta_lines+=("- **Kept:** $DISMISS_REMAINING comment(s) still relevant — focus of this round")
+      if [ -n "$DISMISS_FOCUS" ] && [ "$DISMISS_FOCUS" != "[]" ]; then
+        meta_lines+=("")
+        meta_lines+=("Files in focus:")
+        while IFS= read -r l; do meta_lines+=("$l"); done <<<"$(echo "$DISMISS_FOCUS" | jq -r '.[] | "- `\(.path)` — \(.count) comment(s)"')"
+      fi
+      meta_lines+=("")
+    fi
+
+    meta_lines+=("[View workflow →](https://github.com/$REPO/actions/runs/$RUN_ID)")
+    meta_lines+=("")
+    meta_lines+=("</details>")
+    meta_lines+=("")
+    meta_lines+=("<!-- pipeline-meta-end -->")
+
+    meta_section=$(printf '%s\n' "${meta_lines[@]}")
   fi
 
-  out+=("---")
-  out+=("[View workflow →](https://github.com/$REPO/actions/runs/$RUN_ID)")
-  out+=("")
   out+=("<!-- review-summary-end -->")
 
   review_section=$(printf '%s\n' "${out[@]}")
@@ -167,6 +208,7 @@ fi
 # Section B2 — Build combined report
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="B2: build combined report"
 current_body=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json body -q '.body')
 clean_body="$current_body"
 
@@ -178,13 +220,13 @@ if echo "$clean_body" | grep -q '<!-- requirements-review-start -->'; then
   clean_body=$(echo "$clean_body" | sed '/<!-- requirements-review-start -->/,/<!-- requirements-review-end -->/d')
 fi
 
-if echo "$clean_body" | grep -q '<!-- token-usage-start -->'; then
-  clean_body=$(echo "$clean_body" | sed '/<!-- token-usage-start -->/,/<!-- token-usage-end -->/d')
+if echo "$clean_body" | grep -q '<!-- pipeline-meta-start -->'; then
+  clean_body=$(echo "$clean_body" | sed '/<!-- pipeline-meta-start -->/,/<!-- pipeline-meta-end -->/d')
 fi
 
 new_body="$clean_body"
 
-# Section order: 1) Requirements summary, 2) AI review summary, 3) Token usage.
+# Section order: 1) Requirements summary, 2) AI review summary, 3) Pipeline metadata.
 if [ "$NO_ISSUE" != "true" ] && [ -n "${CHECKLIST:-}" ]; then
   new_body="${new_body}"$'\n\n'"${CHECKLIST}"
 fi
@@ -193,14 +235,15 @@ if [ -n "$review_section" ]; then
   new_body="${new_body}"$'\n\n'"${review_section}"
 fi
 
-if [ -n "$usage_section" ]; then
-  new_body="${new_body}"$'\n\n'"${usage_section}"
+if [ -n "$meta_section" ]; then
+  new_body="${new_body}"$'\n\n'"${meta_section}"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════
 # Section C1 — Publish combined report to PR body
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="C1: publish PR body"
 gh pr edit "$PR_NUMBER" --repo "$REPO" --body "$new_body"
 echo "PR body updated."
 
@@ -208,6 +251,7 @@ echo "PR body updated."
 # Section C2 — Set all labels
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="C2: set labels"
 # Code review axis: review-skipped ↔ review-passed / review-failed
 if [ "$HAS_GO" != "true" ]; then
   echo "No Go files — applying review-skipped."
@@ -239,7 +283,7 @@ else
   gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label requirements-skipped 2>/dev/null || true
 
   if [ -n "${CHECKLIST:-}" ]; then
-    printf '%s\n' "$CHECKLIST" > "$tmp/checklist.txt"
+    printf '%s\n' "$CHECKLIST" >"$tmp/checklist.txt"
     UNCHECKED=$(grep -F -c '[ ]' "$tmp/checklist.txt" || true)
     if [ "${UNCHECKED:-0}" -eq 0 ]; then
       echo "All requirements met — applying requirements-verified."
@@ -261,6 +305,7 @@ fi
 # Section C3 — Gate check
 # ═══════════════════════════════════════════════════════════════════════
 
+PHASE="C3: merge gate check"
 HAS_GO_RESULT="${HAS_GO_RESULT:-skipped}"
 CI_RESULT="${CI_RESULT:-skipped}"
 VERIFY_RESULT="${VERIFY_RESULT:-skipped}"

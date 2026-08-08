@@ -22,7 +22,7 @@ concurrency:
 jobs:
   has-go:
     if: |
-      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
+      !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
     outputs:
       go: ${{ steps.check.outputs.go }}
@@ -44,7 +44,7 @@ jobs:
 
   verify-requirements:
     if: |
-      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
+      !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
     outputs:
       no-issue: ${{ steps.verify.outputs.no-issue }}
@@ -66,10 +66,14 @@ jobs:
     needs: [has-go]
     if: |
       needs.has-go.outputs.go == 'true' &&
-      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
+      !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
     outputs:
       existing_comments: ${{ steps.dismiss.outputs.existing_comments }}
+      found: ${{ steps.dismiss.outputs.found }}
+      dismissed: ${{ steps.dismiss.outputs.dismissed }}
+      remaining: ${{ steps.dismiss.outputs.remaining }}
+      focus: ${{ steps.dismiss.outputs.focus }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -88,7 +92,7 @@ jobs:
     needs: [has-go, dismiss-outdated]
     if: |
       needs.has-go.outputs.go == 'true' &&
-      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
+      !endsWith(github.actor, '[bot]')
     strategy:
       fail-fast: false
       matrix:
@@ -126,7 +130,7 @@ jobs:
     needs: [has-go, ci, verify-requirements, dismiss-outdated, review]
     if: |
       always() &&
-      !endsWith(github.actor, '[bot]') && github.actor != 'aleksrdvn-code'
+      !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -152,4 +156,8 @@ jobs:
           VERIFY_RESULT: ${{ needs.verify-requirements.result }}
           DISMISS_RESULT: ${{ needs.dismiss-outdated.result }}
           REVIEW_RESULT: ${{ needs.review.result }}
+          DISMISS_FOUND: ${{ needs.dismiss-outdated.outputs.found }}
+          DISMISS_DISMISSED: ${{ needs.dismiss-outdated.outputs.dismissed }}
+          DISMISS_REMAINING: ${{ needs.dismiss-outdated.outputs.remaining }}
+          DISMISS_FOCUS: ${{ needs.dismiss-outdated.outputs.focus }}
         run: .github/scripts/report-and-gate.sh
