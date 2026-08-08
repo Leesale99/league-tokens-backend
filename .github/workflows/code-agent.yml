@@ -84,9 +84,13 @@ jobs:
           model: deepseek-v4-flash
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
           trigger: /code
-          # Off: the task is small and single-anchored; explicit reasoning on
-          # an ambiguous task caused runaway deliberation and a garbled reply.
-          thinking_level: off
+          # High: deliberation moves into the model's hidden thinking channel
+          # (thinking_delta), which the action excludes from the posted comment.
+          # With thinking off, deepseek narrates its reasoning as visible text
+          # deltas that the action concatenates into the reply. Explicit
+          # reasoning on an ambiguous task previously caused runaway
+          # deliberation — the hard 2-round limit below caps that risk.
+          thinking_level: high
           auto_compaction: true
           export_session_jsonl: true
           loaded_tools: |
