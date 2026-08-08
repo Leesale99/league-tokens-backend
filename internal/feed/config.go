@@ -27,8 +27,10 @@ func (c *Config) Validate() error {
 	var errs []string
 	if c.ProviderURL == "" {
 		errs = append(errs, "FEED_PROVIDER_URL is required")
-	} else if _, err := url.Parse(c.ProviderURL); err != nil {
+	} else if u, err := url.Parse(c.ProviderURL); err != nil {
 		errs = append(errs, fmt.Sprintf("FEED_PROVIDER_URL is invalid: %v", err))
+	} else if u.Scheme != "http" && u.Scheme != "https" {
+		errs = append(errs, "FEED_PROVIDER_URL must be http(s)")
 	}
 	if c.ProviderAPIKey == "" {
 		errs = append(errs, "provider_api_key secret is required")
@@ -36,11 +38,7 @@ func (c *Config) Validate() error {
 	if c.PollInterval <= 0 {
 		errs = append(errs, "FEED_POLL_INTERVAL must be positive")
 	}
-type Config struct {
-	ProviderURL    string        `env:"FEED_PROVIDER_URL,required"`
-	ProviderAPIKey string        `env:"PROVIDER_API_KEY"`
-	PollInterval   time.Duration `env:"FEED_POLL_INTERVAL" envDefault:"1m"`
-}
+	if len(errs) > 0 {
 		return fmt.Errorf("feed config: %s", strings.Join(errs, "; "))
 	}
 	return nil
