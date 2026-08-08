@@ -39,7 +39,6 @@ jobs:
     env:
       PR_NUMBER: ${{ inputs.pr_number }}
       REPO: ${{ inputs.repo }}
-      FINDINGS_FILE: ${{ runner.temp }}/review-findings.json
     steps:
       - uses: actions/checkout@v6
         with:
@@ -84,6 +83,7 @@ jobs:
         id: prompt
         env:
           GH_TOKEN: ${{ github.token }}
+          FINDINGS_FILE: ${{ runner.temp }}/review-findings.json  # runner is step-level-only in env
         run: |
           cat ".github/prompts/_common.md" > "$RUNNER_TEMP/review-prompt.md"
           cat ".github/prompts/${{ inputs.focus }}.md" >> "$RUNNER_TEMP/review-prompt.md"
@@ -187,6 +187,8 @@ jobs:
 
       - name: Validate findings output
         if: always()
+        env:
+          FINDINGS_FILE: ${{ runner.temp }}/review-findings.json
         run: |
           if [ -f "$FINDINGS_FILE" ] && jq -e 'type == "array"' "$FINDINGS_FILE" >/dev/null 2>&1; then
             echo "::notice::Review job emitted $(jq 'length' "$FINDINGS_FILE") finding(s)."
