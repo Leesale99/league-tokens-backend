@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Phase B+C: Aggregates review comments and requirements checklist into
-# a combined report, publishes to PR body, manages all labels, and runs
-# the merge gate check. Runs as the sink job after all Phase A jobs.
+# Phase B+C: Aggregates per-focus review findings (artifacts) into ONE
+# consolidated review comment + PR-body report, publishes the PR body,
+# manages all labels, and runs the merge gate check. Runs as the sink job
+# after all Phase A jobs. This is the ONLY job that writes to the PR, so
+# comment posting is race-free by construction.
 set -euo pipefail
 
 tmp=$(mktemp -d)
@@ -12,7 +14,7 @@ NO_ISSUE="${NO_ISSUE:-false}"
 
 # Phase tracking: a bare `set -e` death only prints a line number; this turns
 # it into a readable annotation naming the failing phase. (Fatal `set -u`
-# errors aren't catchable here and keep bash's native message.).
+# errors aren't catchable here and keep bash's native message.)
 PHASE="startup"
 on_error() {
   echo "::error::report-and-gate.sh failed in phase '${PHASE}' (line $1: $2)" >&2
@@ -20,179 +22,203 @@ on_error() {
 trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
 
 # ═══════════════════════════════════════════════════════════════════════
-# Section B1 — Aggregate review comments (if Go files present)
+# Section B1 — Aggregate findings, post one consolidated review, build the
+#              PR-body review summary.
 # ═══════════════════════════════════════════════════════════════════════
 
-PHASE="B1: aggregate review comments"
+PHASE="B1: aggregate review findings"
 total_blocking=0
 review_section=""
 meta_section=""
 
 if [ "$HAS_GO" = "true" ]; then
-  echo "Aggregating review comments ..."
+  echo "Aggregating review findings ..."
 
-  # Exclude comments in resolved or outdated review threads. The REST pull
-  # comments API does not expose thread state, so resolve it via GraphQL.
-  excluded_ids=$(gh api graphql \
-    -f query='query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved isOutdated comments(first: 100) { nodes { databaseId } } } } } } }' \
-    -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F pr="$PR_NUMBER" \
-    --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isOutdated or .isResolved) | .comments.nodes[].databaseId]' 2>/dev/null || true)
-  excluded_ids="${excluded_ids:-[]}"
-  if [ "$excluded_ids" != "[]" ]; then
-    echo "Excluding $(echo "$excluded_ids" | jq 'length') comment(s) in resolved/outdated threads."
-  fi
+  all_findings=$(FINDINGS_DIR="${FINDINGS_DIR:-}" .github/scripts/aggregate-findings.sh 2>>"$tmp/aggregate.log" || echo '[]')
+  cat "$tmp/aggregate.log" >&2 || true
 
-  comments_raw="$tmp/comments.jsonl"
-
-  # Only open comments count: not replies, not on outdated diffs (line null),
-  # not in resolved/outdated threads.
-  gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate --jq "
-    .[]
-    | select(.user.login == \"github-actions[bot]\")
-    | select(.body | test(\"\\\\*\\\\*[^*]*(blocking|important|suggestion)\"))
-    | select(.in_reply_to_id == null)
-    | select(.line != null)
-    | select(.id as \$cid | $excluded_ids | index(\$cid) == null)
-    | {body: .body, path: .path, line: .line, id: .id}
-  " >"$comments_raw"
-
-  all_findings='[]'
-
-  while IFS= read -r raw; do
-    body=$(echo "$raw" | jq -r '.body')
-    path=$(echo "$raw" | jq -r '.path')
-    line=$(echo "$raw" | jq -r '.line')
-    id=$(echo "$raw" | jq -r '.id')
-
-    first_line=$(echo "$body" | head -1)
-
-    case "$first_line" in
-    *'**'*'blocking'*) sev="blocking" ;;
-    *'**'*'important'*) sev="important" ;;
-    *'**'*'suggestion'*) sev="suggestion" ;;
-    *) continue ;;
-    esac
-
-    title=$(echo "$first_line" | sed -E 's/^[^—]*— //;s/\*\*$//')
-
-    desc=$(echo "$body" | sed '1,2d' | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//' | head -c 200)
-
-    if [ -n "$title" ] && [ -n "$desc" ]; then
-      full_desc="$title. $desc"
-    elif [ -n "$title" ]; then
-      full_desc="$title"
-    else
-      full_desc="$desc"
-    fi
-
-    all_findings=$(echo "$all_findings" | jq -c \
-      --arg sev "$sev" \
-      --arg path "$path" \
-      --argjson line "$line" \
-      --argjson id "$id" \
-      --arg desc "$full_desc" \
-      '. + [{severity: $sev, path: $path, line: $line, id: $id, description: $desc}]' \
-      2>/dev/null || echo "$all_findings")
-
-  done <"$comments_raw"
-
-  all_findings=$(echo "$all_findings" | jq -c '
-    group_by({path, line}) |
-    map(
-      sort_by(
-        if .severity == "blocking" then 0
-        elif .severity == "important" then 1
-        else 2 end
-      ) | .[0]
-    )
-  ' 2>/dev/null || echo '[]')
-
+  # Deduplicated by (path, line) in aggregate-findings.sh. Totals drive the
+  # posted review, the PR-body summary, and the review-failed label.
+  total_findings=$(echo "$all_findings" | jq 'length' 2>/dev/null || echo 0)
   total_blocking=$(echo "$all_findings" | jq '[.[] | select(.severity == "blocking")] | length' 2>/dev/null || echo 0)
   total_important=$(echo "$all_findings" | jq '[.[] | select(.severity == "important")] | length' 2>/dev/null || echo 0)
   total_suggestion=$(echo "$all_findings" | jq '[.[] | select(.severity == "suggestion")] | length' 2>/dev/null || echo 0)
 
+  echo "Aggregated $total_findings finding(s): $total_blocking blocking, $total_important important, $total_suggestion suggestion."
+
+  # ── Manage previous rounds' comments + post one consolidated review ───
+  # Only touch comments when all review jobs succeeded; a failed round keeps
+  # everything as evidence (the gate fails anyway).
+  #
+  # Delete + post, relying on GitHub's native behavior for reply detection:
+  #   - DELETE a previous round's bot comment → success: it was untouched
+  #     superseded noise, gone. This round re-posts the finding if it still
+  #     applies.
+  #   - DELETE fails (422): the comment has human replies — GitHub refuses to
+  #     orphan them, so the thread is kept as engaged history. Resolved or
+  #     wontfix threads re-appear as fresh comments each round until fixed;
+  #     resolving is the PR owner's job.
+  # No reply-detection logic needed — the delete attempt IS the detection.
+  # Reactions are not interaction: a reacted-to comment with no replies is
+  # deleted too. Submitted review events can't be deleted via the API, so
+  # the timeline keeps one "reviewed" entry per round.
+  comment_ids='[]'
+  case "${REVIEW_RESULT:-success}" in
+    success|skipped) review_ok=1 ;;
+    *) review_ok=0 ;;
+  esac
+  if [ "$review_ok" -eq 0 ]; then
+    echo "::warning::One or more review jobs failed (REVIEW_RESULT=${REVIEW_RESULT}) — skipping comment management/post, keeping previous comments."
+  else
+    # Previous rounds' bot comments (id only — enough for the delete loop).
+    comments=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate --jq \
+      '[.[] | select(.user.login == "github-actions[bot]") | .id]' 2>/dev/null || echo '[]')
+
+    deleted=0
+    kept=0
+    while read -r id; do
+      [ -z "$id" ] && continue
+      if gh api "repos/$REPO/pulls/comments/$id" -X DELETE >/dev/null 2>&1; then
+        deleted=$((deleted + 1))
+      else
+        echo "  kept previous round comment #$id (has human replies)"
+        kept=$((kept + 1))
+      fi
+    done < <(echo "$comments" | jq -r '.[]')
+    echo "Previous round: deleted $deleted untouched comment(s), kept $kept engaged comment(s)."
+
+    # Snapshot surviving bot comments so we can tell them apart from the ones
+    # we post below — kept old threads must not be linked from the summary.
+    before_ids=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate --jq \
+      '[.[] | select(.user.login == "github-actions[bot]") | {id, path, line}]' 2>/dev/null || echo '[]')
+
+    if [ "$total_findings" -gt 0 ]; then
+      echo "$all_findings" | jq -c '{event: "COMMENT", body: "", comments: [.[] | {path, line, body}]}' > "$tmp/review-payload.json"
+
+      if gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --input "$tmp/review-payload.json" >/dev/null 2>"$tmp/post.err"; then
+        echo "Posted consolidated review with $total_findings inline comment(s)."
+      else
+        # A bulk post fails with 422 when a comment's line is not in the current
+        # diff (e.g. stale finding from an earlier push). Fall back to one review
+        # per comment and skip unanchored lines.
+        echo "::warning::Bulk review post failed: $(head -1 "$tmp/post.err" || true) — posting comments individually."
+        echo "$all_findings" | jq -c '.[]' | while read -r f; do
+          [ -z "$f" ] && continue
+          single=$(jq -n --argjson f "$f" '{event: "COMMENT", body: "", comments: [{path: $f.path, line: $f.line, body: $f.body}]}')
+          if gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --input <(printf '%s' "$single") >/dev/null 2>&1; then
+            echo "  posted $(echo "$f" | jq -r '.path + ":" + ((.line // 0)|tostring)')"
+          else
+            echo "::warning::Skipped $(echo "$f" | jq -r '.path + ":" + ((.line // 0)|tostring)') — line not in current diff"
+          fi
+        done
+      fi
+
+      # New comment ids = bot comments now minus the kept survivors.
+      after_ids=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" --paginate --jq \
+        '[.[] | select(.user.login == "github-actions[bot]") | {id, path, line}]' 2>/dev/null || echo '[]')
+      comment_ids=$(jq -n --argjson after "$after_ids" --argjson before "$before_ids" \
+        '($before | map(.id)) as $ids | [ $after[] | select(.id as $i | ($ids | index($i)) == null) ]')
+    else
+      echo "No findings to post — previous round's untouched comments already deleted."
+    fi
+  fi
+
+  # ── Build the PR-body review summary section ──────────────────────────
   out=()
   out+=("<!-- review-summary-start -->")
   out+=("")
   out+=("## AI Review Summary")
   out+=("")
 
-  if [ "$total_blocking" -eq 0 ] && [ "$total_important" -eq 0 ] && [ "$total_suggestion" -eq 0 ]; then
-    out+=("No issues found.")
+  if [ "$total_findings" -eq 0 ]; then
+    if [ "$review_ok" -eq 0 ]; then
+      out+=("> ⚠️ Review incomplete — one or more review jobs failed.")
+      out+=("")
+    else
+      out+=("No issues found.")
+    fi
   else
-    for sev_label in "blocking:🔴 Blocking" "important:🟠 Important" "suggestion:🟡 Suggestion"; do
-      sev="${sev_label%%:*}"
-      heading="${sev_label##*:}"
-      count=$(echo "$all_findings" | jq '[.[] | select(.severity == "'"$sev"'")] | length')
-      items=$(echo "$all_findings" | jq -r \
-        --arg repo "$REPO" --arg pr "$PR_NUMBER" \
-        '[.[] | select(.severity == "'"$sev"'")] | .[] | "- [ ] [`\(.path):\(.line)`](https://github.com/\($repo)/pull/\($pr)#discussion_r\(.id)) — \(.description)"' \
-        2>/dev/null || true)
-      if [ -n "${items:-}" ]; then
-        out+=("<details>")
-        out+=("<summary>$heading ($count)</summary>")
-        out+=("")
-        while IFS= read -r l; do out+=("$l"); done <<<"$items"
-        out+=("")
-        out+=("</details>")
-        out+=("")
+    if [ "$review_ok" -eq 0 ]; then
+      out+=("> ⚠️ Review incomplete — one or more review jobs failed; findings below may be partial.")
+      out+=("")
+    fi
+    # Render one bullet per finding, linked to the posted comment id.
+    blocking_items=()
+    important_items=()
+    suggestion_items=()
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      sev=$(echo "$f" | jq -r '.severity')
+      path=$(echo "$f" | jq -r '.path')
+      line=$(echo "$f" | jq -r '.line')
+      title=$(echo "$f" | jq -r '.title')
+      body=$(echo "$f" | jq -r '.body')
+      id=$(echo "$comment_ids" | jq -r --arg p "$path" --argjson l "$line" \
+        '.[] | select(.path == $p and .line == $l) | .id' | head -1)
+      desc=$(echo "$body" | sed '1,2d' | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//' | head -c 200)
+
+      if [ -n "$title" ] && [ -n "$desc" ]; then
+        full_desc="$title. $desc"
+      elif [ -n "$title" ]; then
+        full_desc="$title"
+      else
+        full_desc="$desc"
       fi
-    done
+
+      loc="${path}:${line}"
+      if [ -n "$id" ] && [ "$id" != "null" ]; then
+        item="- [ ] [\`${loc}\`](https://github.com/$REPO/pull/$PR_NUMBER#discussion_r$id) — $full_desc"
+      else
+        item="- [ ] \`${loc}\` — $full_desc"
+      fi
+      case "$sev" in
+        blocking)   blocking_items+=("$item") ;;
+        important)  important_items+=("$item") ;;
+        suggestion) suggestion_items+=("$item") ;;
+      esac
+    done < <(echo "$all_findings" | jq -c '.[]')
+
+    render_details() {
+      local heading="$1"; shift
+      [ "$#" -eq 0 ] && return 0
+      out+=("<details>")
+      out+=("<summary>$heading ($#)</summary>")
+      out+=("")
+      for l in "$@"; do [ -n "$l" ] && out+=("$l"); done
+      out+=("")
+      out+=("</details>")
+      out+=("")
+    }
+    render_details "🔴 Blocking" "${blocking_items[@]}"
+    render_details "🟠 Important" "${important_items[@]}"
+    render_details "🟡 Suggestion" "${suggestion_items[@]}"
   fi
 
-  # Pipeline metadata: token usage per review job (from uploaded
-  # review-usage-* artifacts) plus dismiss-outdated focus info showing what
-  # this round's review was focused on and what was skipped. Collapsed by
-  # default; the "View workflow" link sits at the bottom of the section.
+  # Pipeline metadata: token usage per review job (from uploaded artifacts).
   USAGE_DIR="${USAGE_DIR:-}"
   usage_rows=""
   if [ -n "$USAGE_DIR" ] && [ -d "$USAGE_DIR" ]; then
     usage_rows=$(jq -sr 'sort_by(.job) | .[] | "| \(.job) | \(.model) | \(.usage.input) | \(.usage.cacheRead) | \(.usage.output) | \(.usage.cacheWrite) | \(.usage.total) | $\((.usage.cost * 10000 | round) / 10000) |"' "$USAGE_DIR"/*/review-usage.json 2>/dev/null || true)
   fi
 
-  DISMISS_FOUND="${DISMISS_FOUND:-}"
-  DISMISS_DISMISSED="${DISMISS_DISMISSED:-}"
-  DISMISS_REMAINING="${DISMISS_REMAINING:-}"
-  DISMISS_FOCUS="${DISMISS_FOCUS:-}"
-
-  meta_section=""
-  if [ -n "$usage_rows" ] || [ -n "$DISMISS_FOUND" ]; then
+  if [ -n "$usage_rows" ]; then
     meta_lines=()
     meta_lines+=("<!-- pipeline-meta-start -->")
     meta_lines+=("")
     meta_lines+=("<details>")
     meta_lines+=("<summary>Last review round</summary>")
     meta_lines+=("")
-
-    if [ -n "$usage_rows" ]; then
-      meta_lines+=("### Token Usage")
-      meta_lines+=("")
-      meta_lines+=("| Job | Model | Input | Cache read | Output | Cache write | Total | Cost |")
-      meta_lines+=("|---|---|---|---|---|---|---|---|")
-      meta_lines+=("$usage_rows")
-      meta_lines+=("")
-    fi
-
-    if [ -n "$DISMISS_FOUND" ]; then
-      meta_lines+=("### Review focus")
-      meta_lines+=("")
-      meta_lines+=("- **Found:** $DISMISS_FOUND previous comment(s)")
-      meta_lines+=("- **Skipped:** $DISMISS_DISMISSED outdated comment(s) (file+line changed)")
-      meta_lines+=("- **Kept:** $DISMISS_REMAINING comment(s) still relevant — focus of this round")
-      if [ -n "$DISMISS_FOCUS" ] && [ "$DISMISS_FOCUS" != "[]" ]; then
-        meta_lines+=("")
-        meta_lines+=("Files in focus:")
-        while IFS= read -r l; do meta_lines+=("$l"); done <<<"$(echo "$DISMISS_FOCUS" | jq -r '.[] | "- `\(.path)` — \(.count) comment(s)"')"
-      fi
-      meta_lines+=("")
-    fi
-
+    meta_lines+=("### Token Usage")
+    meta_lines+=("")
+    meta_lines+=("| Job | Model | Input | Cache read | Output | Cache write | Total | Cost |")
+    meta_lines+=("|---|---|---|---|---|---|---|---|")
+    meta_lines+=("$usage_rows")
+    meta_lines+=("")
     meta_lines+=("[View workflow →](https://github.com/$REPO/actions/runs/$RUN_ID)")
     meta_lines+=("")
     meta_lines+=("</details>")
     meta_lines+=("")
     meta_lines+=("<!-- pipeline-meta-end -->")
-
     meta_section=$(printf '%s\n' "${meta_lines[@]}")
   fi
 
@@ -309,14 +335,13 @@ PHASE="C3: merge gate check"
 HAS_GO_RESULT="${HAS_GO_RESULT:-skipped}"
 CI_RESULT="${CI_RESULT:-skipped}"
 VERIFY_RESULT="${VERIFY_RESULT:-skipped}"
-DISMISS_RESULT="${DISMISS_RESULT:-skipped}"
 REVIEW_RESULT="${REVIEW_RESULT:-skipped}"
 
 # Any pipeline job that failed (or timed out / was cancelled) blocks the merge,
 # even if the PR already carries passing labels. The user must re-trigger the
 # workflow and fix the failing job before the PR can merge.
 FAILED=""
-for RESULT in HAS_GO_RESULT CI_RESULT VERIFY_RESULT DISMISS_RESULT REVIEW_RESULT; do
+for RESULT in HAS_GO_RESULT CI_RESULT VERIFY_RESULT REVIEW_RESULT; do
   VALUE="${!RESULT}"
   if [ "$VALUE" != "success" ] && [ "$VALUE" != "skipped" ]; then
     FAILED="${FAILED}${RESULT}=${VALUE} "
