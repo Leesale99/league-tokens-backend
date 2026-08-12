@@ -10,6 +10,7 @@ This repository uses project-local Pi prompt templates for the issue lifecycle. 
 4. For each brief, run `/implement-task <issue-number> <task-file>`, then `/review-task <issue-number> <task-file>`.
 5. `/final-review <issue-number>` creates a tmux review-orchestrator session and dispatches five independent review workers. Resolve findings and repeat review as needed.
 6. `/open-pr <issue-number>` pushes the completed branch, opens a PR, and moves the board item to In review.
+7. After GitHub confirms the issue is `CLOSED`, run `/archive-closed-issue <issue-number>` before discarding the local branch or worktree. It verifies a complete Obsidian archive of `docs/issue-workflows/<issue>/`, asks for explicit confirmation, and only then removes that repository directory. Opening a PR is not an archive trigger.
 
 ## Context research
 
