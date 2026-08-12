@@ -10,7 +10,20 @@ This repository uses project-local Pi prompt templates for the issue lifecycle. 
 4. For each brief, run `/implement-task <issue-number> <task-file>`, then `/review-task <issue-number> <task-file>`.
 5. `/final-review <issue-number>` creates a tmux review-orchestrator session and dispatches five independent review workers. Resolve findings and repeat review as needed.
 6. `/open-pr <issue-number>` pushes the completed branch, opens a PR, and moves the board item to In review.
-7. After GitHub confirms the issue is `CLOSED`, run `/archive-closed-issue <issue-number>` before discarding the local branch or worktree. It verifies a complete Obsidian archive of `docs/issue-workflows/<issue>/`, asks for explicit confirmation, and only then removes that repository directory. Opening a PR is not an archive trigger.
+7. After GitHub confirms the issue is `CLOSED`, run `/archive-closed-issue <issue-number>` before discarding the local branch or worktree. It creates a vault archive branch and PR, verifies the merged archive on vault `main`, and only then proposes a separate backend cleanup PR. Opening either PR is not an archive or deletion trigger.
+
+## Knowledge-base publication boundary
+
+The active issue workflow remains canonical in this backend repository until the issue is closed and its archive is verified. The separate `Leesale99/vault-league-tokens` repository is the reviewed publication channel for Obsidian knowledge. Agents must:
+
+- use `obsidian` with `vault="league-tokens"` for every vault content operation;
+- never push directly to vault `main`;
+- treat an unmerged vault branch or PR as draft context;
+- merge the vault archive PR and verify its Manifest on vault `main` before removing `docs/issue-workflows/<issue>/`;
+- remove exactly that directory only through a separate, reviewed backend cleanup PR;
+- preserve unrelated pre-existing backend changes and never run Graphify as part of issue workflow archival.
+
+For source mirror changes, use `/sync-project-wiki --mode check|plan|apply|verify` and follow `30 Engineering/Source Sync Protocol.md` in the vault.
 
 ## Context research
 
