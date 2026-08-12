@@ -131,7 +131,7 @@ async function archiveFromPayload(app, payloadPath, options = {}) {
     "",
   ].join("\n");
   const manifestHash = crypto.createHash("sha256").update(manifest).digest("hex");
-  await writeNote(app, `${root}/Manifest.md`, frontmatter({ kind: "issue-manifest", status: "verified", issue_number: issue, archive_stage: stage, manifest_hash: manifestHash }) + "\n" + manifest);
+  await writeNote(app, `${root}/Manifest.md`, frontmatter({ kind: "issue-manifest", status: "verified", issue_number: issue, archive_stage: stage, artifact_count: payload.artifact_count, vault_pr: options.vaultPr || "pending", vault_merge_commit: options.vaultMergeCommit || "pending", backend_cleanup_pr: options.backendCleanupPr || "pending", manifest_hash: manifestHash }) + manifest);
 
   const landing = [
     frontmatter({
