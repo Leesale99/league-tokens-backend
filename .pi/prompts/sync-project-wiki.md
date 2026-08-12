@@ -38,12 +38,12 @@ Do not assume these paths are correct. Verify remotes before apply or verify. If
 ## Phase 0 — Preflight for every mode
 
 1. Read `CONTEXT.md`.
-2. Read the vault notes:
-   - `00 Maps/PR-Gated Knowledge Base Sync Plan`;
-   - `30 Engineering/Vault PR Workflow`;
-   - `30 Engineering/Source Sync Protocol`;
-   - `30 Engineering/Closed Issue Archival Protocol`;
-   - `99 Reports/Initial Wiki Validation`.
+2. Read only the mode-relevant operating note:
+   - `check` or `plan`: `30 Engineering/Source Sync Protocol`;
+   - `apply`: `30 Engineering/Source Sync Protocol` and `30 Engineering/Vault PR Workflow`;
+   - `verify`: `30 Engineering/Vault PR Workflow` plus the repository validator output.
+
+   Do not read the implementation plan, closed-issue protocol, or historical validation report for a normal source sync. Read the plan only when changing this workflow or resolving a contradiction in the operating notes.
 3. Run `obsidian vault` with `vault="league-tokens"`; confirm the vault name and root.
 4. Verify both Git remotes exactly. For vault VCS operations use the approved Obsidian Git/guarded adapter; use Obsidian for note content.
 5. Confirm the vault starts from current `origin/main`. It must be on `main` for preflight; a dirty tree is a hard stop unless the user explicitly identifies every intended change as part of the current operation.

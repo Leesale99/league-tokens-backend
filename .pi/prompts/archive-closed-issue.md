@@ -7,6 +7,10 @@ Archive closed issue #$1 only after reading `30 Engineering/Closed Issue Archiva
 
 This workflow has two reviewed pull requests. The vault archive PR must merge and be verified before a separate backend cleanup PR may remove the active workflow records. Creating a branch, committing, pushing, or opening either PR is not a deletion authorization.
 
+## Context budget
+
+Read only `CONTEXT.md` once, `30 Engineering/Closed Issue Archival Protocol.md`, and `30 Engineering/Vault PR Workflow.md`. Do not read the PR-gated implementation plan, source-sync protocol, or historical validation reports for a normal archive. Treat workflow artifacts as exact bytes: use inventory, hashes, the Manifest, and Obsidian-side copying rather than loading the entire issue corpus into model context.
+
 ## Stage 0 — Closure and repository preflight
 
 1. Confirm the issue is closed:

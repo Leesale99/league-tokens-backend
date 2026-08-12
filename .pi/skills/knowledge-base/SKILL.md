@@ -27,6 +27,7 @@ description: Retrieve and maintain League Tokens project knowledge in the league
 - Use content hashes, not repository HEAD alone, to identify source drift.
 - `CONTEXT.md` is initially a trigger-only dependency and does not require a full vault mirror.
 - Curated topic pages are interpretations: review them semantically instead of blindly replacing them when a source changes.
+- The implementation plan is historical design context, not routine operating context. Read it only when changing the workflow or resolving a contradiction; do not load it for a normal sync or archive.
 
 ## Preservation
 
