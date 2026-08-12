@@ -20,14 +20,36 @@ description: Retrieve and maintain League Tokens project knowledge in the league
 4. Follow each topic claim to its `50 Sources/` mirror. If mirror provenance differs from the repository source, the repository wins.
 5. For closed issue history, search `60 Issue Archive/` by issue number, title, or artifact name. Archived material is vault-canonical only after its manifest records successful verification and its vault PR is merged.
 
+## Workflow context routing
+
+Load only the narrowest operating contract needed for the requested mode:
+
+| Operation | Required context | Avoid by default |
+|---|---|---|
+| Sync `check`/`plan` | `CONTEXT.md`, `Source Sync Protocol` | implementation plan, archive protocol, historical reports, topic bodies |
+| Sync `apply` | `CONTEXT.md`, `Source Sync Protocol`, `Vault PR Workflow` | archive protocol, historical reports, unrelated topics |
+| Sync `verify` | `CONTEXT.md`, `Vault PR Workflow`, validator output | implementation plan and source prose not named by the diff |
+| Archive `prepare` | `CONTEXT.md`, `Closed Issue Archival Protocol`, `Vault PR Workflow` | source-sync protocol, implementation plan, historical reports |
+| Archive `verify-vault` | Manifest, landing note, validator output, merged PR metadata | full artifact corpus and active source specs |
+| Archive `cleanup` | merged vault PR, Manifest, exact backend path diff | vault corpus and unrelated project notes |
+
+The implementation plan is historical design context, not routine operating context. Read it only when changing the workflow or resolving a contradiction; do not load it for normal sync or archive execution.
+
 ## Source synchronization
 
-- Use `/sync-project-wiki --mode check|plan|apply|verify` and read `30 Engineering/Source Sync Protocol.md` before changing a mirror.
-- `check`, `plan`, and `verify` are read-only. `apply` requires explicit authorization and must create a vault branch/PR.
+- Use `/sync-project-wiki --mode check|plan|apply|verify`.
+- `check` and `plan` persist metadata-only local snapshots under ignored `.kb-sync/`; these are restartability state, not backend receipts.
+- `apply` requires a plan snapshot and explicit authorization; it must create a vault branch/PR.
+- `verify` consumes the selected branch/PR and source ref without modifying notes.
 - Use content hashes, not repository HEAD alone, to identify source drift.
 - `CONTEXT.md` is initially a trigger-only dependency and does not require a full vault mirror.
 - Curated topic pages are interpretations: review them semantically instead of blindly replacing them when a source changes.
-- The implementation plan is historical design context, not routine operating context. Read it only when changing the workflow or resolving a contradiction; do not load it for a normal sync or archive.
+
+## Closed-issue archival
+
+- Use `/archive-closed-issue <number> --stage prepare|verify-vault|cleanup`.
+- `prepare` creates the vault archive PR and stops; `verify-vault` requires its merge; `cleanup` requires verified publication and explicit user authorization.
+- Use `archive_inventory.py` for byte/hash inventory and the Manifest as the durable state record.
 
 ## Preservation
 

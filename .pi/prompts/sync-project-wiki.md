@@ -1,6 +1,6 @@
 ---
 description: Synchronize League Tokens repository sources into the PR-gated Obsidian knowledge base
-argument-hint: "--mode <check|plan|apply|verify> [--source-ref <committed-ref>]"
+argument-hint: "--mode <check|plan|apply|verify> [--source-ref <committed-ref>] [--check-id <id>] [--plan-id <id>] [--state-dir <path>]"
 ---
 
 Synchronize the League Tokens project knowledge base without bypassing repository authority or vault review.
@@ -20,10 +20,12 @@ Synchronize the League Tokens project knowledge base without bypassing repositor
 
 Parse the requested mode from the command arguments. If no mode is supplied, use `check` and do not modify either repository.
 
-- `--mode check`: read-only source inventory and mirror drift report.
-- `--mode plan`: read-only proposed changes, mirror destinations, and affected topic pages.
-- `--mode apply`: explicit, branch-local synchronization followed by validation, commit, push, and PR preparation. Ask for confirmation immediately before the first vault write if the user did not already explicitly authorize apply.
-- `--mode verify`: validate a selected branch or merged PR against the selected committed backend source ref; make no content changes.
+- `--mode check`: inspect sources and mirrors, then persist a compact local check snapshot. It never writes vault content or tracked repository files.
+- `--mode plan`: consume a check snapshot, classify proposed changes, and persist a compact local plan snapshot. It never writes vault content.
+- `--mode apply`: require `--plan-id`; consume that exact plan snapshot, write only the branch-local vault changes, validate, and prepare publication. Ask for confirmation immediately before the first vault write if the user did not already explicitly authorize apply.
+- `--mode verify`: validate a selected branch or merged PR against the source ref recorded in a snapshot; make no content changes.
+
+`--state-dir` defaults to the ignored backend-local `.kb-sync/` directory. Snapshot files contain metadata, hashes, classifications, and paths only; they must never contain source bodies, credentials, or issue-artifact content. `--check-id` and `--plan-id` must be stable identifiers matching `[A-Za-z0-9._-]+`.
 
 Accept `--source-ref <ref>` for a committed backend ref. Default to the current backend `HEAD` only after confirming that the source tree is committed. `check` and `plan` may inspect a draft ref only when the user explicitly labels it draft; a draft-based vault PR must not be merged before the backend source decision merges.
 
@@ -32,6 +34,9 @@ Accept `--source-ref <ref>` for a committed backend ref. Default to the current 
 - Backend: current working repository, expected remote `git@github.com:Leesale99/league-tokens-backend.git`.
 - Vault: `/Users/aleksrdvn/Projects/vaults/league-tokens`, expected remote `git@github.com:Leesale99/vault-league-tokens.git`, Obsidian vault name `league-tokens`.
 - Source inventory helper: `scripts/knowledge-base/source_inventory.py`.
+- Local state helper: `scripts/knowledge-base/sync_snapshot.py`.
+
+The state directory is a restartability aid, not a backend synchronization receipt. It is ignored and must never be staged.
 
 Do not assume these paths are correct. Verify remotes before apply or verify. If a path or remote differs, stop and report it.
 
@@ -51,7 +56,7 @@ Do not assume these paths are correct. Verify remotes before apply or verify. If
 7. Inspect `.obsidian/plugins/obsidian-git/data.json` through Obsidian. Automatic commit/save, push, pull, and pull-on-boot timers must be disabled (`autoSaveInterval: 0`, `autoPushInterval: 0`, `autoPullInterval: 0`, `autoPullOnBoot: false`). These local settings are not staged.
 8. Check the current vault branch and changed paths. Stop if `.obsidian/`, workspace files, `.DS_Store`, Graphify output, or unrelated paths would be included.
 
-Report all preflight failures together and make no vault writes.
+Report all preflight failures together and make no vault writes. `check` and `plan` may write only metadata-only snapshots under the ignored state directory.
 
 ## Phase 1 — Source inventory
 
@@ -72,6 +77,15 @@ The source inventory includes:
 - source path, source type, source ref, resolved revision, last source-changing revision, SHA-256, byte count, and expected mirror path.
 
 Use content hashes as drift identity. A changed repository HEAD with unchanged source content is not source drift.
+
+After collecting the source inventory, create a check payload containing the inventory, selected source ref, vault base commit, mirror classifications, and affected topic paths. Persist it with:
+
+```bash
+python3 scripts/knowledge-base/sync_snapshot.py write \
+  --kind check --id <check-id> --input <check-payload.json> --state-dir .kb-sync
+```
+
+Print the snapshot ID and path. Do not put source bodies in the payload.
 
 ## Phase 2 — Mirror comparison
 
@@ -95,16 +109,34 @@ Classify each inventory item as `current`, `changed`, `missing mirror`, `unexpec
 - For a new source, choose a stable destination under the appropriate `50 Sources/` directory and record the mapping in the report.
 - For a renamed/deleted source, stop and ask for an explicit mapping or archival status.
 
-In `check` mode, print the inventory and stop. In `plan` mode, print the proposed vault paths, old/new hashes, affected Maps/topics, and expected changed paths, then stop. Neither mode may create a branch or write notes.
+In `check` mode, print the inventory and check snapshot ID, then stop. In `plan` mode, require `--check-id`, read that snapshot, classify proposed changes, and persist a plan payload with:
+
+- the input check ID;
+- source ref and revision;
+- old/new hashes;
+- mirror paths;
+- affected Maps/topics;
+- expected changed paths;
+- validation requirements.
+
+Persist it with:
+
+```bash
+python3 scripts/knowledge-base/sync_snapshot.py write \
+  --kind plan --id <plan-id> --input <plan-payload.json> --state-dir .kb-sync
+```
+
+Neither mode may create a vault branch or write notes.
 
 ## Phase 3 — Apply on a vault branch
 
 Only for `apply` after preflight and comparison succeed:
 
-1. Ensure vault local `main` is current with `origin/main` through the approved Git adapter.
-2. Create `kb/sync/backend-<short-source-sha>` from that exact `main`. Use a unique suffix if the branch already exists; never reuse a branch containing unrelated changes.
-3. Confirm the branch is checked out before any note write.
-4. Through Obsidian only:
+1. Require `--plan-id` and read `sync_snapshot.py read --kind plan --id <plan-id>`. Stop if the snapshot is missing, malformed, stale, or its source ref differs from the requested ref.
+2. Ensure vault local `main` is current with `origin/main` through the approved Git adapter.
+3. Create `kb/sync/backend-<short-source-sha>` from that exact `main`. Use a unique suffix if the branch already exists; never reuse a branch containing unrelated changes.
+4. Confirm the branch is checked out before any note write.
+5. Through Obsidian only:
    - update changed source mirrors;
    - add missing mirrors;
    - add/refresh `source_byte_count` without changing a source hash checkpoint unnecessarily;
@@ -113,15 +145,16 @@ Only for `apply` after preflight and comparison succeed:
    - inspect and list affected curated topic pages;
    - update curated prose only after semantic review and link it to the authoritative mirror;
    - create `99 Reports/Source Sync <timestamp or short sha>.md`.
-5. The report must include backend repository, source ref, source revision, source inventory, old/new hashes, mirror paths, affected topics, validation results, branch, PR status, and whether the source was merged or draft.
+6. The report must include check ID, plan ID, backend repository, source ref, source revision, source inventory, old/new hashes, mirror paths, affected topics, validation results, branch, PR status, and whether the source was merged or draft.
 
-Do not write to a vault file outside the approved scope. Do not create a backend sync receipt in this workflow.
+Do not write to a vault file outside the approved scope. Do not create a backend synchronization receipt; local snapshots are ignored workflow state only.
 
 ## Phase 4 — Validate before publication
 
 Run both repository and Obsidian checks. Stop before commit if any required check fails:
 
 - the source inventory succeeds for the selected committed ref; when no explicit ref was supplied, `--require-clean` also succeeds;
+- the required check/plan snapshot exists, is metadata-only, and records the same source ref and revision;
 - no canonical source path (`CONTEXT.md`, `specs/`, or `docs/adr/`) is dirty;
 - all required mirrors exist and their hashes/byte counts match the selected ref;
 - no duplicate `source_path` values;
@@ -190,4 +223,4 @@ An open, approved, or closed-unmerged PR is not canonical.
 - Post-merge mistake: create a corrective vault PR.
 - Never clean or reset unrelated backend changes.
 
-At completion, report the mode, source ref, classifications, changed paths, validation results, branch/commit/PR if any, and remaining manual actions. Clearly distinguish draft branch state from merged `main` state.
+At completion, report the mode, source ref, check/plan snapshot IDs, classifications, changed paths, validation results, branch/commit/PR if any, and remaining manual actions. Clearly distinguish ignored local state, draft branch state, and merged `main` state.

@@ -10,7 +10,7 @@ This repository uses project-local Pi prompt templates for the issue lifecycle. 
 4. For each brief, run `/implement-task <issue-number> <task-file>`, then `/review-task <issue-number> <task-file>`.
 5. `/final-review <issue-number>` creates a tmux review-orchestrator session and dispatches five independent review workers. Resolve findings and repeat review as needed.
 6. `/open-pr <issue-number>` pushes the completed branch, opens a PR, and moves the board item to In review.
-7. After GitHub confirms the issue is `CLOSED`, run `/archive-closed-issue <issue-number>` before discarding the local branch or worktree. It creates a vault archive branch and PR, verifies the merged archive on vault `main`, and only then proposes a separate backend cleanup PR. Opening either PR is not an archive or deletion trigger.
+7. After GitHub confirms the issue is `CLOSED`, run `/archive-closed-issue <issue-number> --stage prepare` before discarding the local branch or worktree. It creates a vault archive branch and PR, then stops. Run `--stage verify-vault` after that PR merges, and only then run `--stage cleanup` with explicit authorization to propose a separate backend cleanup PR. Opening either PR is not an archive or deletion trigger.
 
 ## Knowledge-base publication boundary
 

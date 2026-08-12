@@ -3,3 +3,6 @@
 
 # Review state cache — used for incremental reviews on synchronize
 /.review-state
+
+# Local knowledge-base sync/archive snapshots; never publish as a backend receipt
+/.kb-sync/

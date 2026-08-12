@@ -1,6 +1,6 @@
 ---
 description: Verify and archive a closed issue workflow into the PR-gated League Tokens Obsidian vault
-argument-hint: "<issue-number>"
+argument-hint: "<issue-number> --stage <prepare|verify-vault|cleanup> [--state-dir <path>]"
 ---
 
 Archive closed issue #$1 only after reading `30 Engineering/Closed Issue Archival Protocol.md` in the `league-tokens` vault.
@@ -10,6 +10,16 @@ This workflow has two reviewed pull requests. The vault archive PR must merge an
 ## Context budget
 
 Read only `CONTEXT.md` once, `30 Engineering/Closed Issue Archival Protocol.md`, and `30 Engineering/Vault PR Workflow.md`. Do not read the PR-gated implementation plan, source-sync protocol, or historical validation reports for a normal archive. Treat workflow artifacts as exact bytes: use inventory, hashes, the Manifest, and Obsidian-side copying rather than loading the entire issue corpus into model context.
+
+## Stage selection
+
+The default stage is `prepare`. Stages are restartable and intentionally do not perform later irreversible actions:
+
+- `prepare` — verify closure, inventory artifacts, create the vault archive branch/notes, validate, and open the vault PR;
+- `verify-vault` — require a merged vault PR, verify the archive and Manifest on vault `main`, and record the publication checkpoint;
+- `cleanup` — require verified vault publication and explicit user authorization, then create the separate backend cleanup PR.
+
+A stage must stop if the required prior state is absent. The archive landing note and Manifest are the durable state record; local inventory files are ignored implementation state.
 
 ## Stage 0 — Closure and repository preflight
 
@@ -29,15 +39,18 @@ Read only `CONTEXT.md` once, `30 Engineering/Closed Issue Archival Protocol.md`,
 
 Report all preflight failures and make no vault writes.
 
-## Stage 1 — Inventory and vault archive branch
+## Stage 1 — Inventory and vault archive branch (`prepare`)
 
-1. Inventory every substantive file under `docs/issue-workflows/$1/`. Exclude only `.DS_Store`; do not silently exclude logs, JSON, Markdown, reports, or status files. Record for each source:
-   - repository-relative path;
-   - byte count;
-   - SHA-256;
-   - content type.
-2. Capture available source branch, implementation PR URL, merge state/commit, issue URL, title, and closure timestamp.
-3. On `kb/archive/issue-$1`, create this layout through Obsidian:
+Run this deterministic inventory before loading artifact bodies into model context:
+
+```bash
+python3 scripts/knowledge-base/archive_inventory.py --repo . --issue $1 --include-content --output <state-dir>/archive-$1.json --pretty
+```
+
+The inventory excludes only `.DS_Store` and records repository-relative path, byte count, SHA-256, media type, source branch, source revision, and artifact count. `--include-content` is for the Obsidian-side adapter; do not print or paste its payload into the conversation.
+
+1. Capture available source branch, implementation PR URL, merge state/commit, issue URL, title, and closure timestamp.
+2. On `kb/archive/issue-$1`, create this layout through Obsidian:
 
    ```text
    60 Issue Archive/YYYY/Issue <number> – <short title>/
@@ -47,17 +60,18 @@ Report all preflight failures and make no vault writes.
    ```
 
    Create parent folders through the Obsidian API. Do not use Bash `cp`, `mv`, `rm`, `cat`, or direct filesystem writes on vault paths.
-4. Preserve each Markdown artifact exactly in its artifact note body after the archive note's provenance frontmatter. Render JSON artifacts in a fenced `json` block while preserving the exact serialized content. For other file types, use an appropriate fenced block and state the original media/type.
+3. Use `scripts/knowledge-base/archive_adapter.js` from inside `obsidian eval` with the inventory payload. The adapter reads the payload outside model context, verifies every source hash/byte count, and creates the landing note, artifact notes, links, and Manifest through `app.vault`. Pass issue metadata, the vault branch, and `archiveStage: prepared` as adapter options.
+4. The adapter must preserve Markdown bodies, render JSON in fenced `json` blocks, and represent non-text artifacts as fenced base64 content. The source hash and byte count remain the authority for exactness.
 5. Every artifact note must record original repository path, source byte count, source SHA-256, source issue, and archive verification state.
-6. Create a landing note with issue state, URL, title, `closedAt`, source branch/PR/merge information, vault branch, and placeholders for the vault PR and later backend cleanup PR.
-7. Create `Manifest.md` with one row per source artifact mapping source path to vault destination, source bytes, source hash, destination bytes (where applicable), and verification status.
+6. The landing note must include `archive_stage`, `vault_pr`, `vault_merge_commit`, `backend_cleanup_pr`, and `manifest_hash`.
+7. The Manifest must include one row per source artifact with source path, vault destination, source bytes, source hash, media type, and verification status, plus publication-state metadata.
 8. Link the landing note to every artifact and the Manifest. Link the archive Map only after validation succeeds.
 
-## Stage 2 — Verify before opening the vault PR
+## Stage 2 — Verify before opening the vault PR (`prepare`)
 
 Stop before commit if any check fails:
 
-- source artifact count equals Manifest count;
+- source artifact count equals the inventory and Manifest counts;
 - every source SHA-256 and byte count matches the inventory;
 - every expected destination exists;
 - artifact bodies preserve the source content according to the documented rendering rule;
@@ -70,7 +84,9 @@ Stop before commit if any check fails:
 
 Create a validation report under `99 Reports/` describing the counts, hashes, and results. Do not delete or modify `docs/issue-workflows/$1/`.
 
-## Stage 3 — Vault archive pull request
+## Stage 3 — Vault archive pull request (`prepare`)
+
+Only run this stage after Stage 2 passes.
 
 1. Show the exact changed paths, diff stat, and validation output. Stop on unexpected paths.
 2. Commit only the validated vault content:
@@ -88,23 +104,25 @@ Create a validation report under `99 Reports/` describing the counts, hashes, an
    - validation commands/results;
    - explicit exclusion of `.obsidian/`, `.DS_Store`, Graphify output, and unrelated files;
    - statement that backend workflow records remain untouched until this PR merges.
-6. Do not auto-merge. Report the vault PR URL and wait for review/merge.
+6. Set `archive_stage: vault-pr-open` and record the vault PR URL/number in the landing note or Manifest through the same focused branch before reporting completion.
+7. Do not auto-merge. Report the vault PR URL and wait for review/merge.
 
 An open, approved, or closed-unmerged vault PR is not an archive checkpoint.
 
-## Stage 4 — Verify the merged vault archive
+## Stage 4 — Verify the merged vault archive (`verify-vault`)
 
-After the user confirms that the vault PR merged:
+Only run this stage when `--stage verify-vault` is explicit and the user confirms that the vault PR merged:
 
 1. Fetch the vault repository through the approved Git adapter and verify the PR merge commit is on `origin/main`.
 2. Read the archive and Manifest through Obsidian on the published `main` state.
 3. Recheck artifact counts, SHA-256 values, byte counts, destinations, and links.
 4. Record the merged vault PR URL/number and vault merge commit in the landing note through a small follow-up vault PR if the values were not known before the merge.
-5. Do not proceed to backend deletion until the merged archive verification is complete and the user explicitly confirms cleanup may be proposed.
+5. Set `archive_stage: vault-merged`, record `vault_pr`, `vault_merge_commit`, and the verified `manifest_hash` in the landing note/Manifest through a follow-up vault PR if needed.
+6. Do not proceed to backend deletion until the merged archive verification is complete and the user explicitly confirms cleanup may be proposed.
 
-## Stage 5 — Separate backend cleanup pull request
+## Stage 5 — Separate backend cleanup pull request (`cleanup`)
 
-Only after Stage 4 succeeds and the user explicitly authorizes cleanup:
+Only run this stage when `--stage cleanup` is explicit, Stage 4 succeeded, and the user explicitly authorizes cleanup:
 
 1. Create a backend cleanup branch from the relevant backend base. Do not clean or reset unrelated pre-existing changes.
 2. Remove exactly `docs/issue-workflows/$1/` and nothing else. Inspect `git diff --name-status` and stop on any other path.
@@ -123,9 +141,11 @@ If backend cleanup fails or is rejected, retain the verified vault archive and r
 
 Report separately:
 
+- selected stage and prior-stage evidence;
 - issue closure evidence;
 - source inventory and manifest verification;
 - vault branch, commit, PR, and merge state;
 - backend cleanup branch, commit, PR, and merge state;
 - any remaining manual actions;
+- archive stage and persisted PR/merge state;
 - confirmation that Graphify was not run and unrelated changes were preserved.
