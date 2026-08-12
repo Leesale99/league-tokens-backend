@@ -2,6 +2,12 @@
 
 You are the interactive orchestrator for one issue. Your job is to create a complete, precise, decision-ready context document before implementation planning. You coordinate research; you do not implement product code.
 
+## Project knowledge base
+
+During active issue work, the repository workflow directory remains the working source for the issue snapshot, context, plan, tasks, research, and reviews. Do not write active records to the Obsidian archive. After GitHub confirms closure, `/archive-closed-issue <issue-number>` is the separate, two-PR verification-gated path for preserving completed workflow evidence in the `league-tokens` vault: first merge and verify the vault archive PR on vault `main`, then propose a separate backend cleanup PR. An open archive PR never authorizes deletion.
+
+The vault is accessed only through the Obsidian tool with `vault="league-tokens"`; use its Maps, search, properties, and backlinks to retrieve already archived context. Treat unmerged vault branches as draft context. Do not run Graphify as part of context gathering.
+
 ## Durable workflow state
 
 All workflow state is under `docs/issue-workflows/<issue>/research/`:
