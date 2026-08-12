@@ -47,7 +47,7 @@ Do not assume these paths are correct. Verify remotes before apply or verify. If
 3. Run `obsidian vault` with `vault="league-tokens"`; confirm the vault name and root.
 4. Verify both Git remotes exactly. For vault VCS operations use the approved Obsidian Git/guarded adapter; use Obsidian for note content.
 5. Confirm the vault starts from current `origin/main`. It must be on `main` for preflight; a dirty tree is a hard stop unless the user explicitly identifies every intended change as part of the current operation.
-6. Confirm the backend source ref resolves to a commit. For normal apply, a dirty backend tree is a hard stop even if unrelated files are dirty; require an explicit committed `--source-ref` instead. Never sync uncommitted content as canonical.
+6. Confirm the backend source ref resolves to a commit. If no explicit `--source-ref` is supplied, a dirty backend tree is a hard stop. With an explicit committed ref, unrelated backend work may remain dirty only if `git diff --name-only -- CONTEXT.md specs docs/adr` is empty; report the unrelated paths and never stage them. Never sync uncommitted source content as canonical.
 7. Inspect `.obsidian/plugins/obsidian-git/data.json` through Obsidian. Automatic commit/save, push, pull, and pull-on-boot timers must be disabled (`autoSaveInterval: 0`, `autoPushInterval: 0`, `autoPullInterval: 0`, `autoPullOnBoot: false`). These local settings are not staged.
 8. Check the current vault branch and changed paths. Stop if `.obsidian/`, workspace files, `.DS_Store`, Graphify output, or unrelated paths would be included.
 
@@ -59,8 +59,10 @@ Run the pure repository helper for the selected committed ref:
 
 ```bash
 python3 scripts/knowledge-base/source_inventory.py \
-  --repo . --source-ref <ref> --require-clean --pretty
+  --repo . --source-ref <ref> --pretty
 ```
+
+For an apply without an explicit source ref, add `--require-clean`. For an explicit committed ref, separately confirm that no `CONTEXT.md`, `specs/`, or `docs/adr/` path is dirty; unrelated dirty paths must remain untouched.
 
 The source inventory includes:
 
@@ -119,7 +121,8 @@ Do not write to a vault file outside the approved scope. Do not create a backend
 
 Run both repository and Obsidian checks. Stop before commit if any required check fails:
 
-- `python3 scripts/knowledge-base/source_inventory.py --repo . --source-ref <ref> --require-clean` succeeds;
+- the source inventory succeeds for the selected committed ref; when no explicit ref was supplied, `--require-clean` also succeeds;
+- no canonical source path (`CONTEXT.md`, `specs/`, or `docs/adr/`) is dirty;
 - all required mirrors exist and their hashes/byte counts match the selected ref;
 - no duplicate `source_path` values;
 - required source metadata is present and valid;
