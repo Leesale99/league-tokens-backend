@@ -17,3 +17,7 @@ Do NOT load the big spec documents upfront. Follow this order:
 3. **`specs/game_engine_spec.md`**, **`specs/game_design.md`**, **`specs/backend_system_design.md`** — read ONLY if an ADR doesn't cover your question. These are large documents; avoid loading them unless you need engine formulas, game design intent, or cross-cutting architecture detail not in any ADR.
 
 See `docs/agents/domain.md`.
+
+### Knowledge base
+
+Project memory (decision log, lessons, closed-issue archive) lives in the `league-tokens` Obsidian vault. Search it for past-work questions and prior art, never for current system state. See `docs/agents/knowledge-base.md`.
