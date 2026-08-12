@@ -60,7 +60,17 @@ The inventory excludes only `.DS_Store` and records repository-relative path, by
    ```
 
    Create parent folders through the Obsidian API. Do not use Bash `cp`, `mv`, `rm`, `cat`, or direct filesystem writes on vault paths.
-3. Use `scripts/knowledge-base/archive_adapter.js` from inside `obsidian eval` with the inventory payload. The adapter reads the payload outside model context, verifies every source hash/byte count, and creates the landing note, artifact notes, links, and Manifest through `app.vault`. Pass issue metadata, the vault branch, and `archiveStage: prepared` as adapter options.
+3. Use `scripts/knowledge-base/archive_adapter.js` from inside `obsidian eval` with the inventory payload. The adapter reads the payload outside model context, verifies every source hash/byte count, and creates the landing note, artifact notes, links, and Manifest through `app.vault`. Pass issue metadata, the vault branch, and `archiveStage: prepared` as adapter options. The invocation shape is:
+
+   ```text
+   const adapter = require("<backend-root>/scripts/knowledge-base/archive_adapter.js");
+   return await adapter.archiveFromPayload(app, "<state-dir>/archive-$1.json", {
+     shortTitle: "<safe-title>", issueUrl: "<issue-url>", closedAt: "<closed-at>",
+     vaultBranch: "kb/archive/issue-$1", archiveStage: "prepared"
+   });
+   ```
+
+   Execute that code through the `obsidian` tool; never invoke the adapter with a direct filesystem write.
 4. The adapter must preserve Markdown bodies, render JSON in fenced `json` blocks, and represent non-text artifacts as fenced base64 content. The source hash and byte count remain the authority for exactness.
 5. Every artifact note must record original repository path, source byte count, source SHA-256, source issue, and archive verification state.
 6. The landing note must include `archive_stage`, `vault_pr`, `vault_merge_commit`, `backend_cleanup_pr`, and `manifest_hash`.
