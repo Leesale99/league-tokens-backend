@@ -65,6 +65,9 @@ case "$role" in
   context-synthesizer)
     primary="$run_dir"; extras=("$repo_root:ro")
     nets=(opencode.ai pi.dev); report="$run_dir/context.md" ;;
+  plan-critic)
+    primary="$run_dir"; extras=("$repo_root:ro")
+    nets=(opencode.ai pi.dev); report="$run_dir/plan-critic.md" ;;
   *) die "unknown role '$role' — see the role table in scripts/issue-workflow/v2/README.md" ;;
 esac
 
@@ -131,7 +134,7 @@ elif [[ "$code" -ne 0 ]]; then
 elif [[ -f "$report" ]]; then
   state="reported"; reason="report: ${report#"$run_dir"/}"
 else
-  state="failed"; reason="no report.md written — log: agents/$topic.jsonl"
+  state="failed"; reason="no report at ${report#"$run_dir"/} — log: agents/$topic.jsonl"
 fi
 
 tokens="$(jq -r 'select(.type=="message_end") | .message.usage.totalTokens // empty' "$log" 2>/dev/null \

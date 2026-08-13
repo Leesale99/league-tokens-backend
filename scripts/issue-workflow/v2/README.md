@@ -29,9 +29,11 @@ Enforced by `dispatch.sh` — never by convention.
 | `web-researcher` | same | repo | model + `api.openai.com` (search provider; adjust if the host configures another) |
 | `kb-researcher` | same | repo, vault (`LEAGUE_TOKENS_VAULT` or `~/Projects/vaults/league-tokens`) | model endpoints only |
 | `context-synthesizer` | `docs/issue-workflows/<N>/` | repo | model endpoints only |
+| `plan-critic` | same | repo | model endpoints only |
 
 Each role also declares its expected **report path**: research roles write
-`research/<NN>-<slug>/report.md`; the synthesizer writes `context.md`.
+`research/<NN>-<slug>/report.md`; the synthesizer writes `context.md`; the
+plan-critic writes `plan-critic.md`.
 The verdict (`reported | failed`) checks that path after the run.
 
 - The primary workspace is the run's `research/` dir (or the run dir for
