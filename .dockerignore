@@ -1,6 +1,6 @@
 .git
 .github
-specs
+docs/specs
 **/*.md
 Dockerfile
 .dockerignore

@@ -23,7 +23,7 @@ The separate tmux `status` window renders the same state continuously. You and t
 
 1. Read `docs/issue-workflows/<issue>/issue.md`.
 2. List **every** research or brainstorming target that could affect implementation. Include seemingly trivial targets. Do not research yet.
-3. Cover, where applicable: existing code and tests, package/module seams, ADRs, specs, Git history and conventions, database/schema/migrations, API contracts, dependency versions and primary documentation, operational/security constraints, design alternatives, compatibility, edge cases, failure modes, and acceptance-criteria gaps.
+3. Cover, where applicable: existing code and tests, package/module seams, ADRs, specs, Git history and conventions, knowledge-base prior art (search the `league-tokens` vault via the knowledge-base skill for related archive entries, decisions, and lessons on the touched topics), database/schema/migrations, API contracts, dependency versions and primary documentation, operational/security constraints, design alternatives, compatibility, edge cases, failure modes, and acceptance-criteria gaps.
 4. Challenge the issue. Explicitly identify ambiguity, unstated assumptions, missing acceptance criteria, possible scope changes, and ways investigation could invalidate the proposed solution.
 5. Discuss and revise the list with the user until they explicitly approve it. Do not dispatch any worker before that approval.
 

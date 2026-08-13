@@ -5,11 +5,11 @@
 | **Status** | Living document — the single source of truth for the backend system design |
 | **Scope** | `[Launch]` demo and the **1.0** scaling pathway |
 | **Implementation** | Go (`go 1.22+` for our internal expectations) |
-| **Gameplay authority** | `specs/game_engine_spec.md` (authoritative for engine behaviour) |
+| **Gameplay authority** | `docs/specs/game_engine_spec.md` (authoritative for engine behaviour) |
 | **Architectural method** | Modular Monolith + Domain-Driven Design + Hexagonal (Ports and Adapters) + Clean Architecture principles + Onion-style layered modules + SOLID + software design patterns — explicitly chosen so each module is independently extractable to a microservice (ADR-0009) |
 | **Demo target** | VPS: 1 core / 4 GB RAM / 50 GB disk / 4 TB bandwidth; 10k active users (ADR-0006) |
 | **1.0 target** | Horizontally scaling backend fleet; multi-AZ managed Postgres; managed broker; managed K8s (ADR-0009) |
-| **Companion documents** | Twelve ADRs (`docs/adr/0001`–`0012`) and the glossary (`specs/glossary.md`) |
+| **Companion documents** | Twelve ADRs (`docs/adr/0001`–`0012`) and the glossary (`docs/specs/glossary.md`) |
 
 > **Abstract.** This document synthesizes the backend architecture for the **League
 > Tokens** game engine at the `[Launch]` demo and along the **1.0** scaling pathway. It
@@ -19,7 +19,7 @@
 
 > [!NOTE]
 > **Reading conventions.** References of the form **Spec N.M** point to sections of
-> `specs/game_engine_spec.md`. References of the form **Section N.M** point within this
+> `docs/specs/game_engine_spec.md`. References of the form **Section N.M** point within this
 > document. All diagrams are [Mermaid](https://mermaid.js.org) and render directly on
 > GitHub; every diagram is accompanied by the authoritative text it summarizes.
 
@@ -1338,7 +1338,7 @@ than a domain rewrite. Async (Stage 3) is introduced only when async earns its k
 | 6.11 — Terminal states | Postgres BEFORE UPDATE trigger `game.block_terminal_mutations`; optimistic `version` increments | 6.3 · 4.3 |
 | 6.12 — Precision | `internal/infra/money` centralizes `.Round(6)` (half-up) at every persisted step; lint + tests + storage scale `NUMERIC(38,6)` | 7.4 · ADR-0010 |
 
-Spec 1–10 are also referenced via the glossary (`specs/glossary.md`) so unchanged
+Spec 1–10 are also referenced via the glossary (`docs/specs/glossary.md`) so unchanged
 engine-domain contracts (lifecycles, ride state machine, championships) are not
 re-described here.
 
@@ -1512,8 +1512,8 @@ cookie; `system`-only endpoints excluded from `/v1` (system port). Errors render
 
 ## Appendix B: References
 
-- `specs/game_engine_spec.md` — gameplay spec (authoritative engine behaviour).
-- `specs/glossary.md` — ubiquitous language.
+- `docs/specs/game_engine_spec.md` — gameplay spec (authoritative engine behaviour).
+- `docs/specs/glossary.md` — ubiquitous language.
 - ADRs:
 
 | ADR | Topic |
