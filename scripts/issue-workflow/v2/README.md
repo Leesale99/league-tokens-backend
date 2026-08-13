@@ -30,10 +30,21 @@ Enforced by `dispatch.sh` — never by convention.
 | `kb-researcher` | same | repo, vault (`LEAGUE_TOKENS_VAULT` or `~/Projects/vaults/league-tokens`) | model endpoints only |
 | `context-synthesizer` | `docs/issue-workflows/<N>/` | repo | model endpoints only |
 | `plan-critic` | same | repo | model endpoints only |
+| `task-implementer` | `.worktrees/issue-<N>` rw | run dir `:ro`, `.git` rw | model endpoints + Go module proxy (`proxy.golang.org`, `sum.golang.org` — the repo has no `vendor/`) |
+| `task-reviewer` | same | same | same |
 
 Each role also declares its expected **report path**: research roles write
 `research/<NN>-<slug>/report.md`; the synthesizer writes `context.md`; the
-plan-critic writes `plan-critic.md`.
+plan-critic writes `plan-critic.md`; task roles write
+`reports/<task>.implement.md` / `reports/<task>.review.md` **inside the
+worktree** (the worktree's `docs/issue-workflows/<N>/` is git-ignored, so
+reports can never enter a commit).
+
+Task roles execute with cwd = the worktree (other roles: repo root). Task
+state lives in `workflow.json` as objects — `.phases.implement.tasks[<file>]
+= {state: running|done, commit: <sha>}`; the reviewer's `verdict: green|red`
+line (line 1 of the review report) drives the conductor's fix loop
+(amend-brief → re-dispatch, max 3 rounds).
 The verdict (`reported | failed`) checks that path after the run.
 
 - The primary workspace is the run's `research/` dir (or the run dir for

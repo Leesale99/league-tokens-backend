@@ -90,7 +90,7 @@ fi
 fi  # has_phase plan
 
 # ---- implement phase ----
-pending_task="$(jq -r '[.phases.implement.tasks // {} | to_entries[] | select(.value != "done") | .key] | sort | .[0] // empty' "$wf")"
+pending_task="$(jq -r '[.phases.implement.tasks // {} | to_entries[] | select((if (.value | type) == "object" then .value.state else .value end) != "done") | .key] | sort | .[0] // empty' "$wf")"
 if [[ -n "$pending_task" ]]; then
   echo "next: /issue-implement $issue $pending_task"
   exit 0
@@ -116,7 +116,7 @@ if [[ -z "$pending_task" ]]; then
   for f in "$run_dir"/tasks/*.md; do
     [[ -f "$f" ]] || continue
     b="$(basename "$f")"
-    in_map="$(jq -r --arg b "$b" '.phases.implement.tasks[$b] // empty' "$wf")"
+    in_map="$(jq -r --arg b "$b" '.phases.implement.tasks[$b] | if type == "object" then .state else . end // empty' "$wf")"
     if [[ -z "$in_map" ]]; then pending_task="$b"; break; fi
   done
 fi

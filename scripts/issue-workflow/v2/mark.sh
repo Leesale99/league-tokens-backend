@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Usage: mark.sh <issue> <plan-done|task-done <task-file>|pr-done|track <S|M|L> [reason]>
+# Usage: mark.sh <issue> <plan-done|task-run <task-file>|task-done <task-file> [commit]|pr-done|track <S|M|L> [reason]>
 # Mechanical workflow.json bookkeeping for the conductor: records phase
 # completions after their human gates. Keeps jq out of the prompts.
 #
 #   plan-done             plan approved → phase implement
-#   task-done <task-file> a task committed green (e.g. 01-add-session-validation.md)
+#   task-run <task-file>  implementer dispatched for the task
+#   task-done <task-file> [commit]  task committed green (reviewer's
+#                        commit hash recorded when given)
 #   pr-done               PR created → phase archive
 #   track <S|M|L> [reason]  set/change the track at intake or mid-flight;
 #                        creates workflow.json if absent; appends
@@ -42,9 +44,15 @@ case "$action" in
   plan-done)
     jq '.phase = "implement" | .phases.plan.state = "done"' "$wf" >"$tmp"
     ;;
+  task-run)
+    task="${3:?task-run requires the task file name}"
+    jq --arg task "$task" '.phases.implement.tasks[$task] = {state: "running"}' "$wf" >"$tmp"
+    ;;
   task-done)
     task="${3:?task-done requires the task file name}"
-    jq --arg task "$task" '.phases.implement.tasks[$task] = "done"' "$wf" >"$tmp"
+    commit="${4:-}"
+    jq --arg task "$task" --arg commit "$commit" \
+      '.phases.implement.tasks[$task] = {state: "done", commit: $commit}' "$wf" >"$tmp"
     ;;
   pr-done)
     jq '.phase = "archive" | .phases.pr.state = "done"' "$wf" >"$tmp"

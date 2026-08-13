@@ -73,12 +73,15 @@ case "$role" in
     # context; the .git mount is rw by default — objects + per-worktree
     # state must be writable for commits; the main checkout is never
     # mounted). No GitHub credentials: github.com is not in the network
-    # allow-list, so a push fails by policy.
+    # allow-list, so a push fails by policy. proxy.golang.org +
+    # sum.golang.org serve the Go toolchain (repo has no vendor/).
     primary="$repo_root/.worktrees/issue-$issue"; extras=("$run_dir:ro" "$repo_root/.git")
-    nets=(opencode.ai pi.dev); report="$run_dir/reports/$topic.implement.md" ;;
+    nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org)
+    report="$primary/docs/issue-workflows/$issue/reports/$topic.implement.md" ;;
   task-reviewer)
     primary="$repo_root/.worktrees/issue-$issue"; extras=("$run_dir:ro" "$repo_root/.git")
-    nets=(opencode.ai pi.dev); report="$run_dir/reports/$topic.review.md" ;;
+    nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org)
+    report="$primary/docs/issue-workflows/$issue/reports/$topic.review.md" ;;
   *) die "unknown role '$role' — see the role table in scripts/issue-workflow/v2/README.md" ;;
 esac
 
@@ -88,7 +91,8 @@ if [[ "$role" == "kb-researcher" ]] && [[ ! -d "$vault" ]]; then
 fi
 
 # implementer/reviewer sandboxes mount the issue worktree rw — refuse to
-# create an empty dir in its place (worktree.sh must run first).
+# create an empty dir in its place (worktree.sh must run first). Fails
+# before any network-policy side effects.
 if [[ "$role" == "task-implementer" || "$role" == "task-reviewer" ]]; then
   [[ -f "$primary/.git" ]] || die "worktree missing at $primary — run v2/worktree.sh <issue> <slug> first"
 fi
@@ -105,7 +109,7 @@ done
 # ---- 2. sandbox: create once per issue+role, then reuse ----
 if ! sbx ls 2>/dev/null | awk -v n="$sandbox" '$1 == n {found=1} END {exit !found}'; then
   mkdir -p "$primary"
-  sbx create --template "$IMG" --name "$sandbox" shell "$research_dir" "${extras[@]}" >/dev/null
+  sbx create --template "$IMG" --name "$sandbox" shell "$primary" "${extras[@]}" >/dev/null
   # create registers the sandbox asynchronously — retry the ls check.
   found=0
   for _ in $(seq 1 10); do
@@ -126,6 +130,10 @@ if [[ "$create_only" == 1 ]]; then
 fi
 
 [[ -f "$brief" ]] || die "brief not found: $brief"
+# Absolutize so the attached brief resolves inside the sandbox regardless
+# of the exec working dir (task roles run with cwd = the worktree, while
+# the brief path is relative to the repo root).
+brief="$(cd "$(dirname "$brief")" && pwd)/$(basename "$brief")"
 
 # ---- 3. headless dispatch (event log captured on the host) ----
 log="$run_dir/agents/$topic.jsonl"
@@ -133,10 +141,15 @@ mkdir -p "$run_dir/agents" "$run_dir/reports"
 role_file="$repo_root/scripts/issue-workflow/v2/roles/$role.md"
 [[ -f "$role_file" ]] || die "role contract missing: $role_file"
 message="Issue #$issue — run the $role role contract at $role_file; follow it and the attached brief exactly. Write your report, then stop."
+if [[ "$role" == "task-implementer" || "$role" == "task-reviewer" ]]; then
+  wd="$primary"; message="$message Worktree (your working dir, cd is done for you): $primary. Read-only workflow files: $run_dir."
+else
+  wd="$repo_root"
+fi
 
 t0="$(date +%s.%N)"
 set +e
-sbx exec -w "$repo_root" "$sandbox" pi -p "@$brief" "$message" --mode json \
+sbx exec -w "$wd" "$sandbox" pi -p "@$brief" "$message" --mode json \
   --provider "$PROVIDER" --model "$MODEL" >"$log" 2>"$log.err"
 code=$?
 set -e

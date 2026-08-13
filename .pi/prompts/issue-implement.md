@@ -1,14 +1,15 @@
 ---
-description: Implement and review one planned task, committing only on green
+description: Implement and review one planned task headlessly in the worktree sandbox
 argument-hint: "<issue-number> <task-file>"
 ---
-Implement and review task `$2` for issue #$1 (the `task-implementer` + `task-reviewer` roles, one command).
+Implement and review task `$2` for issue #$1 headlessly (the `task-implementer` + `task-reviewer` roles in the worktree sandbox, one command).
 
-1. Read only `docs/issue-workflows/$1/tasks/$2` first. Read its referenced plan/context/issue files only if essential information is genuinely absent from the task brief; do not redo prior research.
-2. Implement exactly the described work. Use `/skill:tdd` at suitable seams where practical.
-3. Run typechecking and focused test files regularly. Run the full test suite once after the implementation is complete. Report commands and outcomes.
-4. Inspect the final diff, then stage only the intended changes with `git add`.
-5. Review `git diff --cached` against the task's acceptance criteria: bugs and logic errors, security issues, error-handling gaps. If you find any issue, report it precisely, return to step 2 to fix it, and re-stage.
-6. When the staged review is green, create a focused commit on the current branch with a conventional message referencing the issue and task, e.g. `feat: add session validation (#46, task 01)`. State the commit hash and the verification performed.
+1. Read `docs/issue-workflows/$1/tasks/$2` (it is also attached to each dispatch below).
+2. Ensure the worktree exists: derive the branch slug from the issue title (lowercase, dashes, ≤40 chars) and run `scripts/issue-workflow/v2/worktree.sh $1 <slug>` — it prints the worktree path and reuses it on re-run.
+3. Run `scripts/issue-workflow/v2/mark.sh $1 task-run $2` (task → running).
+4. Dispatch the implementer: `scripts/issue-workflow/v2/dispatch.sh $1 task-implementer docs/issue-workflows/$1/tasks/$2`. If the verdict is `failed`, present the reason, amend the brief with the user, and re-dispatch.
+5. Dispatch the reviewer: `scripts/issue-workflow/v2/dispatch.sh $1 task-reviewer docs/issue-workflows/$1/tasks/$2`. Read the review report at `docs/issue-workflows/$1/reports/<task-name>.review.md` (task filename without its `.md` suffix, e.g. `01-add-validation.review.md` — it lives in the worktree).
+6. **`verdict: red` → fix loop**: present the findings, amend `docs/issue-workflows/$1/tasks/$2` with the user (incorporate the required fixes into the brief), re-dispatch the implementer (step 4) then the reviewer (step 5), and re-read the verdict. Never exceed 3 fix rounds without escalating to the user.
+7. **`verdict: green`**: run `scripts/issue-workflow/v2/mark.sh $1 task-done $2 <commit-sha>` (sha from the review report's `commit:` line). Report the commit subject + sha, the verification performed, and `next: /issue-next $1`.
 
-Never stage unrelated changes. Do not alter unrelated existing changes.
+Never push, never open a PR from here. The worktree branch accumulates one commit per task; `worktree.sh $1 remove` cleans up at archive.

@@ -23,6 +23,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# Go toolchain (Task 3.2 — mechanical adjustment: the plan's node:24
+# toolchain covers JS, but this repo is Go; implementer/reviewer sandboxes
+# must run typecheck + tests). Pinned official tarball; arm64 = the Apple
+# silicon host platform. Module downloads go through proxy.golang.org,
+# which the task-* roles' network policy allows.
+RUN curl -fsSLo /tmp/go.tgz https://go.dev/dl/go1.26.0.linux-arm64.tar.gz \
+    && rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz && rm /tmp/go.tgz \
+    && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+    && go version
+
 # Commits made inside implementer sandboxes must carry the project identity
 # (same as the host git config) and must not trip git's ownership check on
 # host-mounted worktree files (safe.directory). Changing the image requires
