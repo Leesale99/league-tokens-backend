@@ -126,3 +126,13 @@ per phase, required artifacts, and gates:
   `workflow.json` at intake; mid-flight changes append a history entry).
 - `next.sh` and `research.sh` read the manifest (`phases`, `parallelism.research`);
   adding a step = editing a manifest.
+
+## Reviewability budgets (Task 2.4)
+
+- One task ≈ one commit ≲ **300 LOC** of diff; the issue ≈ one PR ≲
+  **800 LOC**. `/issue-plan` self-flags violations with a concrete split
+  proposal (more tasks; stacked PRs for Track L) — never a silently
+  oversized plan. `plan-critic` checks the same budgets (Task 2.3).
+- Task briefs open with a **TL;DR for humans** and must contain all six
+  required sections (TL;DR, Description, Context, Acceptance criteria,
+  Implementation and verification guidance, References).
