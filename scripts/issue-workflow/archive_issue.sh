@@ -7,7 +7,8 @@ set -euo pipefail
 # archive tree archive/<NNNN>-<slug>/ (history, kept wholesale). Performs no
 # curated writes and no commits — the /archive-issue prompt then writes the
 # landing note, decision/lesson entries, and INDEX updates via the obsidian
-# tool, and creates the single atomic vault commit.
+# tool, and creates the single atomic vault commit. Also kills the issue's
+# leftover context/final-review tmux sessions.
 #
 # Vault root: $LEAGUE_TOKENS_VAULT or ~/Projects/vaults/league-tokens.
 
@@ -43,6 +44,14 @@ mkdir -p "$dest"
 cp -R "$src"/. "$dest"/
 
 count="$(find "$dest" -type f | wc -l | tr -d ' ')"
+
+# The issue is finished; the orchestrator sessions have no work left to do.
+for session in "issue-$issue_number-context" "issue-$issue_number-final-review"; do
+  if tmux has-session -t "$session" 2>/dev/null; then
+    tmux kill-session -t "$session"
+    printf 'Killed tmux session %s\n' "$session" >&2
+  fi
+done
 
 jq -n \
   --arg issue "$issue_number" \

@@ -19,9 +19,5 @@
   "branch": {
     "base": "main",
     "prefix": "feat"
-  },
-  "labels": {
-    "ready_for_agent": "ready-for-agent",
-    "ready_for_human": "ready-for-human"
   }
 }
