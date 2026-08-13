@@ -23,6 +23,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# Commits made inside implementer sandboxes must carry the project identity
+# (same as the host git config) and must not trip git's ownership check on
+# host-mounted worktree files (safe.directory). Changing the image requires
+# a host rebuild + sbx template load (run_worktree_test.sh does it).
+RUN git config --global user.name "Aleksandar Radovanovic" \
+    && git config --global user.email "aleksrdvn@192.168.1.5" \
+    && git config --global --add safe.directory '*'
+
 # pi — global install with --ignore-scripts, same as CI (review.yml).
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
     && pi --version

@@ -68,12 +68,29 @@ case "$role" in
   plan-critic)
     primary="$run_dir"; extras=("$repo_root:ro")
     nets=(opencode.ai pi.dev); report="$run_dir/plan-critic.md" ;;
+  task-implementer)
+    # Phase 3: worktree rw (the only rw mount) + run dir ro (briefs/plan/
+    # context; the .git mount is rw by default — objects + per-worktree
+    # state must be writable for commits; the main checkout is never
+    # mounted). No GitHub credentials: github.com is not in the network
+    # allow-list, so a push fails by policy.
+    primary="$repo_root/.worktrees/issue-$issue"; extras=("$run_dir:ro" "$repo_root/.git")
+    nets=(opencode.ai pi.dev); report="$run_dir/reports/$topic.implement.md" ;;
+  task-reviewer)
+    primary="$repo_root/.worktrees/issue-$issue"; extras=("$run_dir:ro" "$repo_root/.git")
+    nets=(opencode.ai pi.dev); report="$run_dir/reports/$topic.review.md" ;;
   *) die "unknown role '$role' — see the role table in scripts/issue-workflow/v2/README.md" ;;
 esac
 
 # kb-researcher needs the vault; fail loudly when it is missing.
 if [[ "$role" == "kb-researcher" ]] && [[ ! -d "$vault" ]]; then
   die "vault not found at $vault (set LEAGUE_TOKENS_VAULT)"
+fi
+
+# implementer/reviewer sandboxes mount the issue worktree rw — refuse to
+# create an empty dir in its place (worktree.sh must run first).
+if [[ "$role" == "task-implementer" || "$role" == "task-reviewer" ]]; then
+  [[ -f "$primary/.git" ]] || die "worktree missing at $primary — run v2/worktree.sh <issue> <slug> first"
 fi
 
 # ---- 1. network policy (global allow-list; idempotent) ----
@@ -112,7 +129,7 @@ fi
 
 # ---- 3. headless dispatch (event log captured on the host) ----
 log="$run_dir/agents/$topic.jsonl"
-mkdir -p "$run_dir/agents"
+mkdir -p "$run_dir/agents" "$run_dir/reports"
 role_file="$repo_root/scripts/issue-workflow/v2/roles/$role.md"
 [[ -f "$role_file" ]] || die "role contract missing: $role_file"
 message="Issue #$issue — run the $role role contract at $role_file; follow it and the attached brief exactly. Write your report, then stop."

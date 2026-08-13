@@ -9,3 +9,8 @@
 # Per-issue workflow records — intentionally local until a task chooses to
 # commit them; never picked up by a blanket git add -A.
 /docs/issue-workflows/
+
+# Implementation worktrees (Phase 3): the task-implementer's rw mount.
+# Never tracked; a linked worktree's files are invisible to the main
+# checkout, and this keeps them out of `git status` and blanket adds.
+/.worktrees/

@@ -136,3 +136,26 @@ per phase, required artifacts, and gates:
 - Task briefs open with a **TL;DR for humans** and must contain all six
   required sections (TL;DR, Description, Context, Acceptance criteria,
   Implementation and verification guidance, References).
+
+## Implementation worktree (Task 3.1)
+
+`worktree.sh <N> <slug>` creates (or reuses) `.worktrees/issue-<N>` on
+`feat/<N>-<slug>` (branch rule shared with `open_pr.sh`); `<N> remove`
+removes the worktree and its branch. The conductor runs it from the main
+checkout before dispatching implementation.
+
+Implementer sandbox mounts (`dispatch.sh` role spec — enforced there):
+
+| Path | Perms | Why |
+|---|---|---|
+| `.worktrees/issue-<N>` | rw (primary) | the implementation worktree — the only rw working files |
+| `<repo>/.git` | rw | git objects + per-worktree HEAD/index for commits |
+| `docs/issue-workflows/<N>` | ro | briefs/plan/context (live host copy, never stale) |
+
+The main checkout is **never mounted**; `github.com` is not in the network
+allow-list, and no credentials exist in the sandbox, so a push fails by
+policy. The base image bakes the project git identity + `safe.directory '*'`
+(commit authorship from inside sandboxes) — rebuild + `sbx template load`
+after changing `templates/base.Dockerfile` (`spike/run_worktree_test.sh` does
+both). Contract files for `task-implementer`/`task-reviewer` land in Task 3.2;
+the sandbox + mounts are live from Task 3.1.
