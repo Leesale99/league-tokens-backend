@@ -6,9 +6,9 @@
 # present). Writes measurements and logs under
 # docs/issue-workflows/spike/ (gitignored).
 #
-# Prereqs: sbx installed and logged in; OPENCODE_API_KEY in the environment
-# (the host pi session's provider key); Docker Desktop running for the
-# template build. Never prints or persists secret values.
+# Prereqs: sbx installed and logged in; pi authenticated for the provider
+# (OPENCODE_API_KEY env, or pi's own credential resolution); Docker Desktop
+# running for the template build. Never prints or persists secret values.
 
 set -euo pipefail
 
@@ -34,8 +34,13 @@ command -v docker >/dev/null 2>&1 || {
   echo "docker not found on the host (needed to build the template)." >&2
   exit 2
 }
-[[ -n "${OPENCODE_API_KEY:-}" ]] || {
-  echo "OPENCODE_API_KEY not in the host environment." >&2
+
+# Resolve the provider key through pi itself (env var or pi credential
+# store); pipe straight into the sbx secret store, never into a file or
+# stdout. OPENCODE_API_KEY in env wins (matches what the sandbox pi will see).
+api_key="${OPENCODE_API_KEY:-$(pi auth print-api-key --provider "$PROVIDER" 2>/dev/null || true)}"
+[[ -n "$api_key" ]] || {
+  echo "No provider key for $PROVIDER (set OPENCODE_API_KEY or fix pi auth)." >&2
   exit 2
 }
 
@@ -54,7 +59,8 @@ fi
 
 log "credential: custom secret (host store), placeholder inside sandbox"
 sbx secret set-custom --host "$API_DOMAIN" --env OPENCODE_API_KEY \
-  --value "$OPENCODE_API_KEY" >"$OUT/secret-set.txt" 2>&1 || true
+  --value "$api_key" >"$OUT/secret-set.txt" 2>&1 || true
+unset api_key
 
 log "template build"
 t0=$(date +%s.%N)
