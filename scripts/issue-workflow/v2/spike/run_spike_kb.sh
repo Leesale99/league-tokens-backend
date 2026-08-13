@@ -24,6 +24,24 @@ log "network allow-list for context7 (exact args for dispatch.sh)"
 sbx policy ls | grep -q "context7.com" \
   || sbx policy allow network context7.com >"$OUT/policy-allow-context7.txt" 2>&1 || true
 
+log "credential: refresh context7 custom secret from host env"
+ctx7_key="${CONTEXT7_API_KEY:-}"
+if [[ -z "$ctx7_key" ]]; then
+  echo "CONTEXT7_API_KEY not in host env — export it or run: sbx secret set-custom --host context7.com --env CONTEXT7_API_KEY --value <ctx7sk_…>" >&2
+  exit 2
+fi
+if [[ "$ctx7_key" != ctx7sk* ]]; then
+  echo "CONTEXT7_API_KEY in host env does not look like a context7 key (ctx7sk…) — fix the env var" >&2
+  exit 2
+fi
+existing_ph="$(sbx secret ls 2>/dev/null | awk '/CUSTOM SECRETS/{f=1} f && $0 ~ /CONTEXT7_API_KEY/ {print $4; exit}')"
+if [[ -n "$existing_ph" ]]; then
+  sbx secret rm --placeholder "$existing_ph" -f >/dev/null 2>&1 || true
+fi
+sbx secret set-custom --host "context7.com" --env CONTEXT7_API_KEY \
+  --value "$ctx7_key" >"$OUT/secret-set-context7.txt" 2>&1
+unset ctx7_key
+
 log "create sandbox: scratch primary + vault :ro"
 sbx rm --force "$NAME" >/dev/null 2>&1 || true
 sbx create --template "$IMG" --name "$NAME" shell "$OUT/work" "$VAULT:ro" \
