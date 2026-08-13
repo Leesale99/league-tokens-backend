@@ -88,3 +88,21 @@ phase states `pending → running → gated → done` (`gated` = awaiting human
 approval). Concurrent agent-state writes are serialized via
 `.workflow.lock`. Telemetry: per-agent `{tokens, wall_seconds}` from the
 event log (`message_end.usage.totalTokens`), rolled up per phase.
+
+## Conductor state machine (Task 2.1)
+
+```text
+scripts/issue-workflow/v2/next.sh <issue>
+    resolve the run's state → prints `next: <command>` (exit 0) or
+    `blocked: <reason>` (exit 1). Mechanical; /issue-next executes the
+    printed phase command and presents its gates.
+
+scripts/issue-workflow/v2/mark.sh <issue> <plan-done|task-done <task-file>|pr-done>
+    record phase completions after their gates (keeps jq out of prompts).
+```
+
+Phase order: research → plan → implement → review → pr → archive. Research
+state is authoritative from `research.sh`; plan/task/pr completions are
+recorded via `mark.sh`; the review gate is probed with
+`check_review_gate.sh`. Track manifests (Task 2.2) will select phases per
+track.
