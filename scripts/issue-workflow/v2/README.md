@@ -28,12 +28,15 @@ Enforced by `dispatch.sh` — never by convention.
 | `docs-researcher` | same | repo | model + `context7.com` |
 | `web-researcher` | same | repo | model + `api.openai.com` (search provider; adjust if the host configures another) |
 | `kb-researcher` | same | repo, vault (`LEAGUE_TOKENS_VAULT` or `~/Projects/vaults/league-tokens`) | model endpoints only |
+| `context-synthesizer` | `docs/issue-workflows/<N>/` | repo | model endpoints only |
 
-Notes:
+Each role also declares its expected **report path**: research roles write
+`research/<NN>-<slug>/report.md`; the synthesizer writes `context.md`.
+The verdict (`reported | failed`) checks that path after the run.
 
-- The primary workspace is the run's `research/` dir mounted rw at its host
-  path, shadowing the `:ro` repo mount — agents can write only their own
-  `research/<NN>-<slug>/report.md`, never code.
+- The primary workspace is the run's `research/` dir (or the run dir for
+  the synthesizer) mounted rw at its host path, shadowing the `:ro` repo
+  mount — agents can write only their own artifact, never code.
 - All roles get the model endpoints (`opencode.ai`, `pi.dev`) — pi needs the
   model. "No network" means *no additional* hosts; egress to anything
   unlisted is blocked (403).
@@ -63,7 +66,19 @@ scripts/issue-workflow/v2/dispatch.sh [--create-only] <issue> <role> <brief-path
 ```
 
 `pi -p` exits 0 even on model failure, so the verdict comes from the JSONL:
-`"stopReason":"error"` → `failed`, no `report.md` → `failed`.
+`"stopReason":"error"` → `failed`, no report at the role's report path →
+`failed`. Phase-level dispatches (e.g. the synthesizer) take a brief at the
+run root (`synthesis-brief.md`) instead of a research topic dir.
+
+## research.sh modes
+
+```text
+research.sh <issue>              dispatch the queued backlog (≤4 parallel)
+research.sh <issue> --redispatch flip failed agents back to queued after the
+                                 human amended their briefs, then re-dispatch
+research.sh <issue> --finalize   mark research done after the human approved
+                                 context.md → next: /issue-plan
+```
 
 ## workflow.json
 

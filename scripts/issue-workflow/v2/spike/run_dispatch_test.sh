@@ -81,6 +81,26 @@ jq -e '[.phases.research.agents[] | select(.state == "reported")] | length == 4'
 jq -e '.telemetry.research.dispatches == 4' "$run_dir/workflow.json" >/dev/null \
   || { echo "FAIL: telemetry.dispatches != 4" >&2; exit 1; }
 
+log "synthesize context.md (context-synthesizer dispatch)"
+cat >"$run_dir/synthesis-brief.md" <<EOF
+Synthesize context.md for issue #$N from research/*/report.md per the context-synthesizer role contract.
+EOF
+bash "$REPO/scripts/issue-workflow/v2/dispatch.sh" "$N" context-synthesizer "$run_dir/synthesis-brief.md"
+[[ -f "$run_dir/context.md" ]] || { echo "FAIL: context.md missing" >&2; exit 1; }
+echo "  ok context.md ($(wc -l <"$run_dir/context.md") lines)"
+
+log "finalize the research phase (human approved context.md)"
+bash "$REPO/scripts/issue-workflow/v2/research.sh" "$N" --finalize
+jq -e '.phases.research.state == "done" and .phase == "plan"' "$run_dir/workflow.json" >/dev/null \
+  || { echo "FAIL: research phase not done / next phase not plan" >&2; exit 1; }
+echo "  ok phase done, next: plan"
+
+log "assert: zero tmux windows for issue #$N"
+if tmux ls 2>/dev/null | grep -q "issue-$N"; then
+  echo "FAIL: tmux sessions for issue $N exist" >&2; exit 1
+fi
+echo "  ok zero tmux"
+
 log "PASS — acceptance criteria met"
 printf '\n%-24s %-20s %-9s\n' 'TOPIC' 'ROLE' 'STATE'
 jq -r '.phases.research.agents | to_entries[] | [.key, .value.role, .value.state] | @tsv' "$run_dir/workflow.json" \
@@ -89,6 +109,6 @@ printf 'telemetry: %s tokens · %s s · %s dispatches\n' \
   "$(jq -r '.telemetry.research.tokens' "$run_dir/workflow.json")" \
   "$(jq -r '.telemetry.research.wall_seconds' "$run_dir/workflow.json")" \
   "$(jq -r '.telemetry.research.dispatches' "$run_dir/workflow.json")"
-printf '\nEvidence:\n  workflow.json: %s\n  reports:       %s/*/report.md\n  event logs:    %s/agents/*.jsonl\n' \
-  "$run_dir/workflow.json" "$research_dir" "$run_dir"
-printf '\nCleanup (after inspection): sbx rm --force issue-%s-repo-researcher issue-%s-docs-researcher issue-%s-web-researcher issue-%s-kb-researcher\n' "$N" "$N" "$N" "$N"
+printf '\nEvidence:\n  workflow.json: %s\n  reports:       %s/*/report.md\n  context.md:    %s/context.md\n  event logs:    %s/agents/*.jsonl\n' \
+  "$run_dir/workflow.json" "$research_dir" "$run_dir" "$run_dir"
+printf '\nCleanup (after inspection): sbx rm --force issue-%s-repo-researcher issue-%s-docs-researcher issue-%s-web-researcher issue-%s-kb-researcher issue-%s-context-synthesizer\n' "$N" "$N" "$N" "$N" "$N"

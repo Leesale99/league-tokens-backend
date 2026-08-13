@@ -28,7 +28,13 @@ brief="${3:?brief path is required}"
 repo_root="$(git rev-parse --show-toplevel)"
 run_dir="$repo_root/docs/issue-workflows/$issue"
 research_dir="$run_dir/research"
-topic="$(basename "$(dirname "$brief")")"
+# topic id: the topic-dir slug for research briefs (research/<NN>-<slug>/brief.md),
+# or the brief filename minus .md for phase-level briefs (e.g. the synthesis brief).
+if [[ "$(basename "$brief")" == "brief.md" ]]; then
+  topic="$(basename "$(dirname "$brief")")"
+else
+  topic="$(basename "$brief" .md)"
+fi
 sandbox="issue-$issue-$role"
 IMG="lt/pi-base:spike"          # built + loaded on the host (Phase 0 spike); per-role layers land in Task 4.3
 PROVIDER="opencode-go"
@@ -37,16 +43,28 @@ vault="${LEAGUE_TOKENS_VAULT:-$HOME/Projects/vaults/league-tokens}"
 
 die() { printf 'dispatch: %s\n' "$*" >&2; exit 1; }
 
-# ---- role spec: mounts + network allow-list (enforced here; the table
-# ---- lives in scripts/issue-workflow/v2/README.md). Every role gets the
-# ---- model endpoints; role-specific hosts are added below. The research
-# ---- primary workspace is the run's research/ dir (rw, host path) so
-# ---- agents can write only their own report.md.
+# ---- role spec: primary workspace (the only rw path), extra :ro mounts,
+# ---- network allow-list, and the expected report path. Enforced here; the
+# ---- table lives in scripts/issue-workflow/v2/README.md. Every role gets
+# ---- the model endpoints; role-specific hosts are added below. The primary
+# ---- is a host path mounted rw, shadowing the :ro repo mount, so an agent
+# ---- can write only its own artifact.
 case "$role" in
-  repo-researcher) extras=("$repo_root:ro");              nets=(opencode.ai pi.dev) ;;
-  docs-researcher) extras=("$repo_root:ro");              nets=(opencode.ai pi.dev context7.com) ;;
-  web-researcher)  extras=("$repo_root:ro");              nets=(opencode.ai pi.dev api.openai.com) ;;
-  kb-researcher)   extras=("$repo_root:ro" "$vault:ro");  nets=(opencode.ai pi.dev) ;;
+  repo-researcher)
+    primary="$research_dir"; extras=("$repo_root:ro")
+    nets=(opencode.ai pi.dev); report="$research_dir/$topic/report.md" ;;
+  docs-researcher)
+    primary="$research_dir"; extras=("$repo_root:ro")
+    nets=(opencode.ai pi.dev context7.com); report="$research_dir/$topic/report.md" ;;
+  web-researcher)
+    primary="$research_dir"; extras=("$repo_root:ro")
+    nets=(opencode.ai pi.dev api.openai.com); report="$research_dir/$topic/report.md" ;;
+  kb-researcher)
+    primary="$research_dir"; extras=("$repo_root:ro" "$vault:ro")
+    nets=(opencode.ai pi.dev); report="$research_dir/$topic/report.md" ;;
+  context-synthesizer)
+    primary="$run_dir"; extras=("$repo_root:ro")
+    nets=(opencode.ai pi.dev); report="$run_dir/context.md" ;;
   *) die "unknown role '$role' — see the role table in scripts/issue-workflow/v2/README.md" ;;
 esac
 
@@ -66,7 +84,7 @@ done
 
 # ---- 2. sandbox: create once per issue+role, then reuse ----
 if ! sbx ls 2>/dev/null | awk -v n="$sandbox" '$1 == n {found=1} END {exit !found}'; then
-  mkdir -p "$research_dir"
+  mkdir -p "$primary"
   sbx create --template "$IMG" --name "$sandbox" shell "$research_dir" "${extras[@]}" >/dev/null
   # create registers the sandbox asynchronously — retry the ls check.
   found=0
@@ -93,6 +111,7 @@ fi
 log="$run_dir/agents/$topic.jsonl"
 mkdir -p "$run_dir/agents"
 role_file="$repo_root/scripts/issue-workflow/v2/roles/$role.md"
+[[ -f "$role_file" ]] || die "role contract missing: $role_file"
 message="Issue #$issue — run the $role role contract at $role_file; follow it and the attached brief exactly. Write your report, then stop."
 
 t0="$(date +%s.%N)"
@@ -109,8 +128,8 @@ if grep -q '"stopReason":"error"' "$log"; then
   state="failed"; reason="model error (stopReason:error) — log: agents/$topic.jsonl"
 elif [[ "$code" -ne 0 ]]; then
   state="failed"; reason="pi exit $code — stderr: agents/$topic.jsonl.err"
-elif [[ -f "$research_dir/$topic/report.md" ]]; then
-  state="reported"; reason="report: research/$topic/report.md"
+elif [[ -f "$report" ]]; then
+  state="reported"; reason="report: ${report#"$run_dir"/}"
 else
   state="failed"; reason="no report.md written — log: agents/$topic.jsonl"
 fi
@@ -125,6 +144,13 @@ tokens="$(jq -r 'select(.type=="message_end") | .message.usage.totalTokens // em
 exec 9>"$run_dir/.workflow.lock"
 flock 9
 tmp="$run_dir/workflow.json.tmp.$$"
+# self-register the agent entry when it does not exist yet (standalone
+# dispatches of phase-level roles such as context-synthesizer).
+jq --arg topic "$topic" --arg role "$role" --arg sandbox "$sandbox" \
+   --arg report "${report#"$run_dir"/}" \
+   '.phases.research.agents[$topic] //= {role: $role, sandbox: $sandbox, report: $report}' \
+   "$run_dir/workflow.json" >"$tmp"
+mv "$tmp" "$run_dir/workflow.json"
 jq --arg topic "$topic" --arg state "$state" --arg reason "$reason" \
    --argjson tokens "${tokens:-0}" --argjson wall "$wall" \
    '.phases.research.agents[$topic] |= (.state = $state | .reason = $reason | .telemetry = {tokens: $tokens, wall_seconds: $wall})' \

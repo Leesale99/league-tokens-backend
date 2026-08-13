@@ -1,18 +1,25 @@
 #!/usr/bin/env bash
-# Usage: research.sh <issue>
+# Usage: research.sh <issue> [--finalize|--redispatch]
 # Dispatches the approved research backlog in parallel (≤4), collects
 # reports, and updates workflow.json (phase state + telemetry). Host-side.
 #
 # The backlog is the set of briefs: docs/issue-workflows/<N>/research/
 # <NN>-<slug>/brief.md. Each brief's FIRST LINE must be `role: <role>`
 # (a research role from the v2 README table) so the dispatch is
-# mechanical. Workflow phases: pending → running → gated (awaiting
-# human approval of the reports/context). Agent states:
-# queued → running → reported | failed.
+# mechanical. Workflow phases: pending → running → gated → done.
+# Agent states: queued → running → reported | failed.
+#
+# Modes:
+#   (none)       dispatch the queued backlog (resumes a running phase)
+#   --finalize   mark research done after the human approved context.md
+#   --redispatch flip failed agents back to queued (after the human
+#                amends their briefs) and re-run the dispatch pool
 
 set -euo pipefail
 
 issue="${1:?issue number is required}"
+mode="${2:-}"
+case "$mode" in ""|--finalize|--redispatch) ;; *) die "unknown mode: $mode" ;; esac
 repo_root="$(git rev-parse --show-toplevel)"
 v2="$repo_root/scripts/issue-workflow/v2"
 run_dir="$repo_root/docs/issue-workflows/$issue"
@@ -48,16 +55,43 @@ if [[ ! -f "$wf" ]]; then
 fi
 
 phase="$(jq -r '.phases.research.state // "pending"' "$wf")"
-case "$phase" in
-  gated|done)
-    printf 'research: issue #%s is already %s — no re-dispatch.\n' "$issue" "$phase"
-    printf 'next:      /issue-research %s (human reviews the reports)\n' "$issue"
-    exit 0
-    ;;
-  pending) jq '.phases.research.state = "running"' "$wf" >"$wf.tmp.$$" && mv "$wf.tmp.$$" "$wf" ;;
-  running) : ;;  # resume: dispatch whatever is still queued
-  *) die "unexpected research phase state: $phase" ;;
-esac
+
+if [[ "$phase" == "done" ]]; then
+  printf 'research: issue #%s is already done — next: /issue-plan %s\n' "$issue" "$issue"
+  exit 0
+fi
+
+if [[ "$mode" == "--finalize" ]]; then
+  [[ "$phase" == "gated" ]] || die "--finalize requires a gated research phase (got: $phase)"
+  [[ -f "$run_dir/context.md" ]] || die "--finalize requires context.md — dispatch the context-synthesizer first"
+  jq '.phase = "plan" | .phases.research.state = "done" | .phases.research.agents |= map_values(if .state == "reported" then .state = "done" else . end) |
+      .telemetry.research = {
+        tokens: ([.phases.research.agents[].telemetry | .tokens // 0] | add),
+        wall_seconds: ([.phases.research.agents[].telemetry | .wall_seconds // 0] | add),
+        dispatches: (.phases.research.agents | length)}' \
+    "$wf" >"$wf.tmp.$$" && mv "$wf.tmp.$$" "$wf"
+  printf 'research: issue #%s — phase done\n' "$issue"
+  printf 'next:      /issue-plan %s\n' "$issue"
+  exit 0
+fi
+
+if [[ "$mode" == "--redispatch" ]]; then
+  [[ "$phase" == "gated" ]] || die "--redispatch requires a gated research phase (got: $phase)"
+  jq '.phases.research.state = "running" | .phases.research.agents |= map_values(if .state == "failed" then .state = "queued" else . end)' \
+    "$wf" >"$wf.tmp.$$" && mv "$wf.tmp.$$" "$wf"
+  # fall through to the dispatch pool below
+else
+  case "$phase" in
+    gated)
+      printf 'research: issue #%s is already gated — no re-dispatch.\n' "$issue"
+      printf 'next:      /issue-research %s (synthesize context.md; human reviews it)\n' "$issue"
+      exit 0
+      ;;
+    pending) jq '.phases.research.state = "running"' "$wf" >"$wf.tmp.$$" && mv "$wf.tmp.$$" "$wf" ;;
+    running) : ;;  # resume: dispatch whatever is still queued
+    *) die "unexpected research phase state: $phase" ;;
+  esac
+fi
 
 # ---- 2. register queued agent entries (idempotent)
 for brief in "${briefs[@]}"; do
@@ -110,4 +144,4 @@ printf '\ntelemetry: %s tokens · %s s · %s dispatches\n' \
   "$(jq -r '.telemetry.research.tokens' "$wf")" \
   "$(jq -r '.telemetry.research.wall_seconds' "$wf")" \
   "$(jq -r '.telemetry.research.dispatches' "$wf")"
-printf 'next:      /issue-research %s — human approves the reports (synthesis lands in Task 1.3)\n' "$issue"
+printf 'next:      /issue-research %s — synthesize context.md, then the human approves it\n' "$issue"
