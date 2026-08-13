@@ -6,7 +6,7 @@ Primary context file for agents. Load this before exploring.
 
 1. This file (CONTEXT.md) — glossary + ADR index
 2. `docs/adr/` — read only the ADRs relevant to your task (see index below)
-3. `specs/game_engine_spec.md` / `specs/game_design.md` / `specs/backend_system_design.md` — last resort, only if an ADR doesn't cover your question
+3. `docs/specs/game_engine_spec.md` / `docs/specs/game_design.md` / `docs/specs/backend_system_design.md` — last resort, only if an ADR doesn't cover your question
 
 ## Ubiquitous Language
 
@@ -59,6 +59,6 @@ Map between game-engine terms and backend bounded contexts (ADR-0001).
 
 ## Spec Docs — last resort, only if ADRs don't cover it
 
-- `specs/game_design.md` — game design intent, tuning levers, phasing. Read for "why" questions.
-- `specs/game_engine_spec.md` — authoritative engine state machines, formulas, invariants (Spec N.M). Read for "what exactly happens" questions.
-- `specs/backend_system_design.md` — backend architecture synthesizing all ADRs. Read for cross-cutting architecture overview, data model, sequence flows, or the per-endpoint API reference.
+- `docs/specs/game_design.md` — game design intent, tuning levers, phasing. Read for "why" questions.
+- `docs/specs/game_engine_spec.md` — authoritative engine state machines, formulas, invariants (Spec N.M). Read for "what exactly happens" questions.
+- `docs/specs/backend_system_design.md` — backend architecture synthesizing all ADRs. Read for cross-cutting architecture overview, data model, sequence flows, or the per-endpoint API reference.

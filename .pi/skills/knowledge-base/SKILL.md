@@ -1,6 +1,6 @@
 ---
 name: knowledge-base
-description: Project memory in the "league-tokens" Obsidian vault — decision log (D-NNNN), lessons/gotchas (L-NNN), closed-issue archive, thin topic routers, external research. Use when a question concerns PAST or CLOSED work ("why did we…", "what happened with…", "didn't we already try…", "what keeps going wrong in reviews"), when gathering prior art for a new issue (/start-issue, /gather-context), when the user says "check the wiki", when recording a decision or lesson, or when archiving a closed issue (/archive-issue). Do NOT use for current specs, ADRs, or code — the repo is canonical (CONTEXT.md → docs/adr/ → specs/). On any conflict the repo wins; then fix or flag the wiki note and say so in one line.
+description: Project memory in the "league-tokens" Obsidian vault — decision log (D-NNNN), lessons/gotchas (L-NNN), closed-issue archive, thin topic routers, external research. Use when a question concerns PAST or CLOSED work ("why did we…", "what happened with…", "didn't we already try…", "what keeps going wrong in reviews"), when gathering prior art for a new issue (/start-issue, /gather-context), when the user says "check the wiki", when recording a decision or lesson, or when archiving a closed issue (/archive-issue). Do NOT use for current specs, ADRs, or code — the repo is canonical (CONTEXT.md → docs/adr/ → docs/specs/). On any conflict the repo wins; then fix or flag the wiki note and say so in one line.
 ---
 
 # Knowledge Base

@@ -8,7 +8,7 @@ If it describes the **current system**, it belongs in the repo. If it is **histo
 
 | Data | Home |
 |---|---|
-| `specs/*` (canonical, frozen until MVP) | Repo only |
+| `docs/specs/*` (canonical, frozen until MVP) | Repo only |
 | `docs/adr/*` | Repo only; a superseded ADR's old state gets a vault decision-log entry before being overwritten |
 | `docs/issue-workflows/*` (active issue) | Repo while active → vault archive on close (`/archive-issue <N>`), then deleted locally |
 | Decision log — small decisions, rejected alternatives, chat-made decisions | Vault (`decisions/`, IDs `D-NNNN`) |
@@ -23,7 +23,7 @@ Never copy repo content into curated vault notes; point with `repo-ref`. Excepti
 
 **DO:** past/closed work ("why did we…", "didn't we already try…"); prior art at issue start (`/start-issue`, `/gather-context`); explicit "check the wiki"; synthesis across multiple issues.
 
-**DON'T:** current specs/ADRs/code questions → read the repo (CONTEXT.md → `docs/adr/` → `specs/`). On conflict the repo wins; the agent fixes or flags the wiki note and says so in one line.
+**DON'T:** current specs/ADRs/code questions → read the repo (CONTEXT.md → `docs/adr/` → `docs/specs/`). On conflict the repo wins; the agent fixes or flags the wiki note and says so in one line.
 
 Agent access goes through the `knowledge-base` skill (`.pi/skills/knowledge-base/`), which encodes the retrieval and write playbooks.
 

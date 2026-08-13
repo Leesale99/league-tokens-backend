@@ -8,7 +8,7 @@ Do NOT load the big spec documents upfront. Follow this order:
 
 1. **`CONTEXT.md`** at repo root — glossary + ADR index. Always load this first.
 2. **`docs/adr/`** — read only the ADRs relevant to your task. Use the index in CONTEXT.md to pick the right ones.
-3. **`specs/game_engine_spec.md`**, **`specs/game_design.md`**, **`specs/backend_system_design.md`** — read ONLY if an ADR doesn't cover your question. These are large documents; avoid loading them unless you need engine formulas, game design intent, or cross-cutting architecture detail not in any ADR.
+3. **`docs/specs/game_engine_spec.md`**, **`docs/specs/game_design.md`**, **`docs/specs/backend_system_design.md`** — read ONLY if an ADR doesn't cover your question. These are large documents; avoid loading them unless you need engine formulas, game design intent, or cross-cutting architecture detail not in any ADR.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill creates them lazily when terms or decisions actually get resolved.
 
@@ -26,7 +26,7 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 │       ├── 0001-bounded-contexts.md
 │       ├── … through …
 │       └── 0012-configuration.md
-├── specs/
+├── docs/specs/
 │   ├── glossary.md                       ← ubiquitous language (authoritative source)
 │   ├── game_design.md                    ← game design intent (last resort)
 │   ├── game_engine_spec.md               ← authoritative engine behaviour (last resort)
@@ -36,7 +36,7 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept, use the term as defined in `CONTEXT.md` (sourced from `specs/glossary.md`). Don't drift to synonyms.
+When your output names a domain concept, use the term as defined in `CONTEXT.md` (sourced from `docs/specs/glossary.md`). Don't drift to synonyms.
 
 If the concept you need isn't in the glossary, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 
