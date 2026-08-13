@@ -46,7 +46,13 @@ log "create sandbox: scratch primary + vault :ro"
 sbx rm --force "$NAME" >/dev/null 2>&1 || true
 sbx create --template "$IMG" --name "$NAME" shell "$OUT/work" "$VAULT:ro" \
   >"$OUT/create-kb.log" 2>&1
-sbx ls 2>/dev/null | grep -q "$NAME" || { echo "create failed — see $OUT/create-kb.log" >&2; exit 2; }
+# create registers the sandbox asynchronously; retry the ls check.
+found=0
+for _ in $(seq 1 6); do
+  if sbx ls 2>/dev/null | grep -q "$NAME"; then found=1; break; fi
+  sleep 2
+done
+if [[ "$found" != 1 ]]; then echo "create failed — see $OUT/create-kb.log" >&2; exit 2; fi
 
 log "vault read + ro enforcement"
 # shellcheck disable=SC2016 # $VAULT expands inside the sandbox
