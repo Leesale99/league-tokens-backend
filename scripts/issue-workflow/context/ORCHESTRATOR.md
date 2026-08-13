@@ -9,7 +9,7 @@ All workflow state is under `docs/issue-workflows/<issue>/research/`:
 - `queue.md` is the human-readable, orchestrator-owned research backlog.
 - `<todo-id>/brief.md` is the worker contract.
 - `<todo-id>/report.md` is the worker-owned structured report.
-- `<todo-id>/status.json` is the worker state, exactly one of `queued`, `working`, `review`, `done`, or exceptional `blocked`.
+- `<todo-id>/status.json` is the worker state, exactly one of `queued`, `running`, `reported`, `done`, or exceptional `blocked`.
 
 Workers own only their directory. Do not let them edit product code, `queue.md`, or `context.md`. Display the current state frequently with:
 
@@ -31,23 +31,23 @@ Create one directory per approved todo, write a self-contained `brief.md`, and c
 
 Choose the most fitting role for each todo:
 
-- **scout** — fast, read-only repository mapping: relevant directories, files, code paths, tests, and terminology.
+- **repo-researcher** — fast, read-only repository mapping: relevant directories, files, code paths, tests, and terminology.
 - **architect** — requirement analysis, system constraints, design alternatives, seams, and edge cases. Evaluate architecture against relevant project decisions and patterns; do not invent abstractions without evidence.
 - **docs-auditor** — installed versions, lockfiles, and current primary-source documentation for dependencies or external APIs.
 
 ## Phase 2: dispatch and review
 
-Dispatch no more than three `working` todos at once:
+Dispatch no more than three `running` todos at once:
 
 ```bash
 scripts/issue-workflow/context/dispatch-worker.sh <issue> <todo-id> <role>
 ```
 
-A worker writes its report then marks itself `review`. When that happens:
+A worker writes its report then marks itself `reported`. When that happens:
 
 1. Read its `report.md`.
 2. Present the report and ask the user to approve, reject, or request changes.
-3. If changes are requested, set its state back to `working`, then let the user steer it directly in its tmux window. Do not start a replacement worker for the same todo.
+3. If changes are requested, set its state back to `running`, then let the user steer it directly in its tmux window. Do not start a replacement worker for the same todo.
 4. If approved, update its `status.json` to `{"state":"done"}`, update `queue.md`, and optionally close its window with `close-worker.sh`.
 5. Dispatch the next queued todo only after a slot becomes available.
 
@@ -67,4 +67,4 @@ After every approved todo is `done`, synthesize—not merely concatenate—the a
 8. unresolved questions, if any, clearly labelled as blockers or follow-ups;
 9. a source/report index.
 
-Tell the user when the context document is ready for `/plan-issue <issue>`.
+Tell the user when the context document is ready for `/issue-plan <issue>`.

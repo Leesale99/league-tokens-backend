@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # Copies docs/issue-workflows/<issue>/ into the league-tokens vault as the raw
 # archive tree archive/<NNNN>-<slug>/ (history, kept wholesale). Performs no
-# curated writes and no commits — the /archive-issue prompt then writes the
+# curated writes and no commits — the /issue-archive prompt then writes the
 # landing note, decision/lesson entries, and INDEX updates via the obsidian
 # tool, and creates the single atomic vault commit. Also kills the issue's
 # leftover context/final-review tmux sessions.

@@ -17,7 +17,7 @@ Steps:
 4. **Suggest decision-log and lesson entries.** Draft each candidate as a concrete note (next free ID, title, 2–3 line body), mining: `context.md`'s decisions-and-rejected-alternatives, chat-made decisions recorded in the artifacts, and review findings worth watching for recurrence. Present the drafts as a numbered list; the user approves, edits, or drops each. Write only approved entries, following `templates/decision.md` / `templates/lesson.md`.
 5. Topic pages: for each touched topic, create or refresh a thin router — only if it now links ≥2 entries or is clearly recurring. Update `INDEX.md` only if the map itself changed.
 6. Commit the vault in **one** atomic commit `kb: archive issue #$1` and push (snippet in the knowledge-base skill). If push fails, commit locally and say so.
-7. Clean the repo: remove the local records with `rm -rf docs/issue-workflows/$1/` (they are untracked; no PR needed). Move the board item to Done: `scripts/issue-workflow/move_status.sh <board_item_id> done` using `board_item_id` from the archived `issue.md` frontmatter.
+7. Clean the repo: remove the local records with `rm -rf docs/issue-workflows/$1/` (they are untracked; no PR needed). Move the board item to Done: `scripts/issue-workflow/set_status.sh <board_item_id> done` using `board_item_id` from the archived `issue.md` frontmatter.
 8. Report: archive paths, landing note, decision/lesson IDs created, topic updates, vault commit hash, board status.
 
 Do not change product code in this phase.

@@ -35,11 +35,14 @@ if [[ "$ctx7_key" != ctx7sk* ]]; then
   exit 2
 fi
 existing_ph="$(sbx secret ls 2>/dev/null | awk '/CUSTOM SECRETS/{f=1} f && $0 ~ /CONTEXT7_API_KEY/ {print $4; exit}')"
+# Reuse the existing placeholder so running sandboxes keep a valid env var.
 if [[ -n "$existing_ph" ]]; then
-  sbx secret rm --placeholder "$existing_ph" -f >/dev/null 2>&1 || true
+  sbx secret set-custom --host "context7.com" --env CONTEXT7_API_KEY \
+    --placeholder "$existing_ph" --value "$ctx7_key" >"$OUT/secret-set-context7.txt" 2>&1
+else
+  sbx secret set-custom --host "context7.com" --env CONTEXT7_API_KEY \
+    --value "$ctx7_key" >"$OUT/secret-set-context7.txt" 2>&1
 fi
-sbx secret set-custom --host "context7.com" --env CONTEXT7_API_KEY \
-  --value "$ctx7_key" >"$OUT/secret-set-context7.txt" 2>&1
 unset ctx7_key
 
 log "create sandbox: scratch primary + vault :ro"

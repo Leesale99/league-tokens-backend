@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Usage: check_review_gate.sh <issue-number>
-# Machine-checkable gate for the /open-pr step. Exits 0 only when
+# Machine-checkable gate for the /issue-open-pr step. Exits 0 only when
 # docs/issue-workflows/<issue>/reviews/summary.md carries green frontmatter:
 # status: green, blocking_unresolved: 0, reviewed_head matching the current
 # HEAD. Exits 1 otherwise, with the reason on stderr — no LLM judgement.

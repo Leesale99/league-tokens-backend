@@ -57,17 +57,20 @@ if ! grep -q "pi.dev" "$OUT/probe-policy.txt" 2>/dev/null; then
   sbx policy allow network pi.dev >>"$OUT/policy-allow.txt" 2>&1 || true
 fi
 
-log "credential: refresh custom secret from current pi auth"
+log "credential: refresh custom secret from current pi auth, keeping the placeholder stable"
 # The sandbox sees only the placeholder; the proxy swaps in the real value.
 # Keyed to the wildcard so both the model endpoint (opencode.ai/zen/go/v1)
-# and the catalog endpoint (api.opencode.ai) are covered. A stale stored
-# secret is removed first (identified by its placeholder from `sbx secret ls`).
+# and the catalog endpoint (api.opencode.ai) are covered. IMPORTANT: reuse
+# the existing placeholder instead of generating a new one — running
+# sandboxes keep their env var and the proxy keeps recognizing it.
 existing_ph="$(sbx secret ls 2>/dev/null | awk '/CUSTOM SECRETS/{f=1} f && $0 ~ /OPENCODE_API_KEY/ {print $4; exit}')"
 if [[ -n "$existing_ph" ]]; then
-  sbx secret rm --placeholder "$existing_ph" -f >/dev/null 2>&1 || true
+  sbx secret set-custom --host "**.opencode.ai" --env OPENCODE_API_KEY \
+    --placeholder "$existing_ph" --value "$api_key" >"$OUT/secret-set.txt" 2>&1
+else
+  sbx secret set-custom --host "**.opencode.ai" --env OPENCODE_API_KEY \
+    --value "$api_key" >"$OUT/secret-set.txt" 2>&1
 fi
-sbx secret set-custom --host "**.opencode.ai" --env OPENCODE_API_KEY \
-  --value "$api_key" >"$OUT/secret-set.txt" 2>&1
 unset api_key
 
 log "template build"

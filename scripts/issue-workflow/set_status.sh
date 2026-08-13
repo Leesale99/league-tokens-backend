@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: move_status.sh <board-item-id> <backlog|ready|in_progress|in_review|done>
+# Usage: set_status.sh <board-item-id> <backlog|ready|in_progress|in_review|done>
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="$SCRIPT_DIR/config.json"

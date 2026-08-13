@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: dispatch-worker.sh <issue-number> <todo-id> <scout|architect|docs-auditor>
+# Usage: dispatch-worker.sh <issue-number> <todo-id> <repo-researcher|architect|docs-auditor>
 # Starts one interactive Pi worker window. The worker owns only its report and status files.
 
 issue_number="${1:?issue number is required}"
@@ -13,8 +13,8 @@ todo_dir="$repo_root/docs/issue-workflows/$issue_number/research/$todo_id"
 brief="$todo_dir/brief.md"
 status="$todo_dir/status.json"
 
-case "$role" in scout|architect|docs-auditor) ;; *)
-  echo 'Role must be scout, architect, or docs-auditor.' >&2
+case "$role" in repo-researcher|architect|docs-auditor) ;; *)
+  echo 'Role must be repo-researcher, architect, or docs-auditor.' >&2
   exit 1
 esac
 
@@ -34,21 +34,21 @@ if [[ -f "$status" ]]; then
   fi
 fi
 
-working_count=0
+running_count=0
 for existing_status in "$repo_root/docs/issue-workflows/$issue_number/research"/*/status.json; do
   [[ -f "$existing_status" ]] || continue
-  if [[ "$(jq -r '.state // empty' "$existing_status")" == "working" ]]; then
-    ((working_count += 1))
+  if [[ "$(jq -r '.state // empty' "$existing_status")" == "running" ]]; then
+    ((running_count += 1))
   fi
 done
-if (( working_count >= 3 )); then
-  echo 'Three research workers are already working; wait for a slot before dispatching another.' >&2
+if (( running_count >= 3 )); then
+  echo 'Three research workers are already running; wait for a slot before dispatching another.' >&2
   exit 1
 fi
 
 mkdir -p "$todo_dir"
-printf '{"state":"working"}\n' >"$status"
-worker_prompt="You are the $role research worker for issue #$issue_number. Read the supplied brief. You may inspect sources and write only your own report.md and status.json. Do not edit product code, queue.md, context.md, or another worker's files. Work interactively: the user may steer you in this window. When ready for review, write a structured report to report.md, set status.json to {\"state\":\"review\"}, then state that the report is ready."
+printf '{"state":"running"}\n' >"$status"
+worker_prompt="You are the $role research worker for issue #$issue_number. Read the supplied brief. You may inspect sources and write only your own report.md and status.json. Do not edit product code, queue.md, context.md, or another worker's files. Work interactively: the user may steer you in this window. When ready for review, write a structured report to report.md, set status.json to {\"state\":\"reported\"}, then state that the report is ready."
 printf -v worker_command 'cd %q && exec pi --approve --name %q @%q %q' \
   "$repo_root" "Issue #$issue_number $role $todo_id" "docs/issue-workflows/$issue_number/research/$todo_id/brief.md" "$worker_prompt"
 

@@ -26,4 +26,4 @@ if [[ "$found" == false ]]; then
   printf '%-22s %-16s %s\n' '(none)' '-' '-'
 fi
 
-printf '\nPrimary states: queued → working → review → done\n'
+printf '\nPrimary states: queued → running → reported → done\n'

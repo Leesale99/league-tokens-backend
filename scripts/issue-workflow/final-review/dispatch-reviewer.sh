@@ -2,6 +2,8 @@
 set -euo pipefail
 
 # Usage: dispatch-reviewer.sh <issue-number> <correctness|quality-depth|quality|security|requirements>
+# Starts one interactive Pi reviewer window running the matching role
+# contract from scripts/issue-workflow/v2/roles/reviewer-<focus>.md.
 
 issue_number="${1:?issue number is required}"
 review="${2:?review name is required}"
@@ -17,12 +19,9 @@ if ! tmux has-session -t "$session" 2>/dev/null; then
   exit 1
 fi
 
-case "$review" in
-  quality-depth) command_name='review-quality-depth' ;;
-  *) command_name="review-$review" ;;
-esac
-prompt="/$command_name $issue_number"
-printf -v command 'cd %q && exec pi --approve --name %q %q' \
-  "$repo_root" "Issue #$issue_number review $review" "$prompt"
+role_file="$repo_root/scripts/issue-workflow/v2/roles/reviewer-$review.md"
+prompt="Issue #$issue_number — run the reviewer-$review role contract."
+printf -v command 'cd %q && exec pi --approve --name %q "@%q" %q' \
+  "$repo_root" "Issue #$issue_number review $review" "$role_file" "$prompt"
 tmux new-window -d -t "$session:" -n "$review" "$command"
 printf 'Reviewer started. Open it with:\n\ntmux select-window -t %s:%s\n' "$session" "$review"
