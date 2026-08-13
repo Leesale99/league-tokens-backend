@@ -106,3 +106,21 @@ state is authoritative from `research.sh`; plan/task/pr completions are
 recorded via `mark.sh`; the review gate is probed with
 `check_review_gate.sh`. Track manifests (Task 2.2) will select phases per
 track.
+
+## Tracks (Task 2.2)
+
+Manifests in `tracks/<S|M|L>.md` declare, machine-readably (flat
+`key: value` frontmatter), the phases to run, parallelism budgets, agents
+per phase, required artifacts, and gates:
+
+| Track | Phases | Notes |
+|---|---|---|
+| S | plan,implement,pr | brief-only plan (one task brief from `issue.md`); no research; **no local review — CI is the only gate** |
+| M | research,plan,implement,review,pr | full pipeline, 3 gates |
+| L | research,plan,implement,review,pr | M + spike option + `plan-critic` pass (Task 2.3) + stacked-PR option |
+
+- `/issue-start` proposes the track from signals; the human confirms; `mark.sh
+  <N> track <S|M|L> "<reason>"` records it in `track_history` (creates
+  `workflow.json` at intake; mid-flight changes append a history entry).
+- `next.sh` and `research.sh` read the manifest (`phases`, `parallelism.research`);
+  adding a step = editing a manifest.

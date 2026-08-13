@@ -11,4 +11,5 @@ You are the conductor for issue #$1. You own the workflow state machine and pres
    - plan approved → `scripts/issue-workflow/v2/mark.sh $1 plan-done`
    - a task committed green → `scripts/issue-workflow/v2/mark.sh $1 task-done <task-file>`
    - PR created → `scripts/issue-workflow/v2/mark.sh $1 pr-done`
+   - track changed (escalate/de-escalate) → `scripts/issue-workflow/v2/mark.sh $1 track <S|M|L> "<reason>"`
 5. After the phase completes, re-run `scripts/issue-workflow/v2/next.sh $1` and report the new `next:` command.

@@ -41,7 +41,7 @@ if [[ ! -f "$wf" ]]; then
   jq -n --argjson issue "$issue" \
     '{issue: $issue,
       track: "M",
-      track_history: [{from: null, to: "M", at: (now | todateiso8601), reason: "intake (provisional; track proposal lands in Task 2.2)"}],
+      track_history: [{from: null, to: "M", at: (now | todateiso8601), reason: "intake (fallback init — /issue-start records the confirmed track via mark.sh track)"}],
       phase: "research",
       phases: {
         research: {state: "pending", agents: {}},
@@ -113,14 +113,18 @@ for role in $(jq -r '.phases.research.agents[].role' "$wf" | sort -u); do
   bash "$v2/dispatch.sh" --create-only "$issue" "$role" "$first_brief" >/dev/null
 done
 
-# ---- 4. dispatch the queued backlog in parallel, at most 4 at once
+# ---- 4. dispatch the queued backlog in parallel (budget from the track manifest)
+track="$(jq -r '.track // "M"' "$wf")"
+manifest="$v2/tracks/$track.md"
+parallel="$(awk -F': ' '$1 == "parallelism.research" {print $2; exit}' "$manifest" 2>/dev/null || true)"
+[[ "$parallel" =~ ^[0-9]+$ ]] || parallel=4
 pids=()
 for brief in "${briefs[@]}"; do
   topic="$(basename "$(dirname "$brief")")"
   state="$(jq -r --arg t "$topic" '.phases.research.agents[$t].state // "queued"' "$wf")"
   [[ "$state" == "queued" ]] || continue
   role="$(head -1 "$brief" | sed -E 's/^role:[[:space:]]*//')"
-  while (( $(jobs -rp | wc -l | tr -d ' ') >= 4 )); do sleep 1; done
+  while (( $(jobs -rp | wc -l | tr -d ' ') >= parallel )); do sleep 1; done
   bash "$v2/dispatch.sh" "$issue" "$role" "$brief" &
   pids+=("$!")
 done

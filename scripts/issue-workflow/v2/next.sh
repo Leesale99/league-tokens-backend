@@ -31,7 +31,19 @@ wf="$run_dir/workflow.json"
   exit 0
 }
 
-# ---- research phase ----
+# ---- track manifest (Task 2.2): selects the phases to run. Missing
+# ---- manifest = misconfiguration; report precisely.
+track="$(jq -r '.track // "M"' "$wf")"
+manifest="$repo_root/scripts/issue-workflow/v2/tracks/$track.md"
+[[ -f "$manifest" ]] || {
+  echo "blocked: track manifest missing: scripts/issue-workflow/v2/tracks/$track.md (workflow.json track field is malformed)"
+  exit 1
+}
+phases="$(awk -F': ' '$1 == "phases" {print $2; exit}' "$manifest")"
+has_phase() { [[ ",${phases}," == *",$1,"* ]]; }
+
+# ---- research phase (skipped for tracks without it, e.g. S)
+if has_phase research; then
 rstate="$(jq -r '.phases.research.state // "pending"' "$wf")"
 case "$rstate" in
   running)
@@ -61,8 +73,10 @@ case "$rstate" in
     exit 1
     ;;
 esac
+fi  # has_phase research
 
-# ---- plan phase ----
+# ---- plan phase (skipped for tracks without it)
+if has_phase plan; then
 pstate="$(jq -r '.phases.plan.state // "pending"' "$wf")"
 if [[ "$pstate" != "done" ]]; then
   if [[ -f "$run_dir/plan.md" && -d "$run_dir/tasks" ]]; then
@@ -73,6 +87,7 @@ if [[ "$pstate" != "done" ]]; then
   echo "next: /issue-plan $issue (approve the plan and task briefs)"
   exit 0
 fi
+fi  # has_phase plan
 
 # ---- implement phase ----
 pending_task="$(jq -r '[.phases.implement.tasks // {} | to_entries[] | select(.value != "done") | .key] | sort | .[0] // empty' "$wf")"
@@ -117,9 +132,14 @@ if [[ "$prstate" == "done" ]]; then
   echo "next: /issue-archive $issue (PR merged? — archive closes the run)"
   exit 0
 fi
-if bash "$repo_root/scripts/issue-workflow/check_review_gate.sh" "$issue" >/dev/null 2>&1; then
-  echo "next: /issue-open-pr $issue (review gate green)"
+if has_phase review; then
+  if bash "$repo_root/scripts/issue-workflow/check_review_gate.sh" "$issue" >/dev/null 2>&1; then
+    echo "next: /issue-open-pr $issue (review gate green)"
+  else
+    echo "next: /issue-review $issue (final review — gate not green yet)"
+  fi
 else
-  echo "next: /issue-review $issue (final review — gate not green yet)"
+  # Track S: no local review — CI is the only review gate
+  echo "next: /issue-open-pr $issue (track $track — no local review; CI is the gate)"
 fi
 exit 0
