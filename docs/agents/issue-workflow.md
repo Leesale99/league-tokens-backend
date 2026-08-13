@@ -1,6 +1,6 @@
 # Issue workflow
 
-This repository uses project-local Pi prompt templates for the issue lifecycle. They replace the retired `implement-from-board` skill.
+This repository uses project-local Pi prompt templates for the issue lifecycle.
 
 ## Workflow
 
@@ -26,7 +26,7 @@ Workers run in interactive tmux windows. Switch to a window to inspect tool call
 The five review workers live in `.pi/prompts/`. Each takes an `<issue-number>` argument and writes its report to `docs/issue-workflows/<issue>/reviews/<name>.md`, findings ordered by severity with an explicit `No findings` section when applicable. Customize their rubrics while preserving the issue argument and report path.
 
 - `review-correctness` — correctness & safety: error handling, nil/aliasing/overflow, concurrency. `blocking`/`important`/`suggestion`.
-- `review-quality-depth` — tests, performance, observability, modernization to Go 1.21+ idioms. `important`/`suggestion`; observability & modernization are suggestion-first.
+- `review-quality-depth` — tests, performance, observability, modernization to Go 1.26+ idioms. `important`/`suggestion`; observability & modernization are suggestion-first.
 - `review-quality` — style/idioms, naming, documentation; skips nitpicks. `blocking`/`important`/`suggestion`.
 - `review-security` — security (injection, auth, crypto, data exposure) and dependencies (CVEs, abandoned packages, `replace`). `blocking`/`important`/`suggestion`; supply-chain risk precedes style.
 - `review-requirements` — verifies each stated and clarified requirement against the implementation from `issue.md`, `context.md`, `plan.md`, and task briefs, flagging missing/partial/incorrect/out-of-scope behaviour.
