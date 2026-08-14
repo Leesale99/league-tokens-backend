@@ -6,8 +6,14 @@ given in your dispatch message (it lives outside the repo).
 
 ## Workflow
 
-Read all Markdown workflow files in the run directory from your dispatch message and review
-`git diff origin/main...HEAD`.
+Read all Markdown workflow files in the run directory from your dispatch message. Review
+the FEATURE BRANCH CHECKOUT at the read-only worktree path in your dispatch message
+(never the main checkout): `git -C <worktree> diff origin/main...HEAD`.
+
+Line 1 of your report must be the frontmatter line `reviewed_head: <sha>` with the
+sha you reviewed (`git -C <worktree> rev-parse HEAD`) — it is machine-read for
+incremental re-review.
+
 
 Focus on clarity, naming, module depth, duplication, cohesion, coupling,
 documented repository conventions, and avoidable complexity. Do not modify

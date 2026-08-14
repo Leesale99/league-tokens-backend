@@ -30,6 +30,11 @@ Enforced by `dispatch.sh` — never by convention.
 | `kb-researcher` | same | repo, vault (`LEAGUE_TOKENS_VAULT` or `~/Projects/vaults/league-tokens`) | model endpoints only |
 | `context-synthesizer` | `<run>` | repo `:ro` | model endpoints only |
 | `plan-critic` | same | repo `:ro` | model endpoints only |
+| `reviewer-correctness` | `<run>` (writes `reviews/correctness.md`) | repo `:ro` | model endpoints only |
+| `reviewer-quality` | same | repo `:ro` | model endpoints only |
+| `reviewer-quality-depth` | same | repo `:ro` | model endpoints only |
+| `reviewer-security` | same | repo `:ro` | model endpoints only |
+| `reviewer-requirements` | same | repo `:ro` | model endpoints only |
 | `task-implementer` | `.worktrees/issue-<N>` rw | run dir `:ro`, `.git` rw | model endpoints + Go module proxy (`proxy.golang.org`, `sum.golang.org` — the repo has no `vendor/`) |
 | `task-reviewer` | same | same | same |
 
@@ -38,7 +43,10 @@ Each role also declares its expected **report path**: research roles write
 plan-critic writes `plan-critic.md` — all at the absolute paths the
 dispatch message names (the run dir lives OUTSIDE the repo, resolved by
 `v2/run_dir.sh <N>` → `~/Projects/league-tokens/issue-workflows/<N>`; the
-conductor's sandbox mounts it rw alongside the repo). Task roles write
+conductor's sandbox mounts it rw alongside the repo). The five reviewer
+roles (Phase 4) write `reviews/<focus>.md` and their reports carry a
+machine-read `reviewed_head:` frontmatter line (Task 4.2's incremental
+re-review base). Task roles write
 `reports/<task>.implement.md` / `reports/<task>.review.md` **inside the
 worktree** (the worktree's `docs/issue-workflows/<N>/` is git-ignored, so
 reports can never enter a commit).
@@ -84,6 +92,15 @@ scripts/issue-workflow/v2/dispatch.sh [--create-only] <issue> <role> <brief-path
     §4.4 primitive: policy → sandbox create/reuse → pi -p @brief headless
     (event log → agents/<topic>.jsonl) → verdict (reported | failed) →
     workflow.json agent state + telemetry → five-line summary.
+
+scripts/issue-workflow/v2/review.sh <issue> [--redispatch]
+    final review (Phase 4): refuses Track S (parallelism.review: 0 — CI
+    is the only gate), guards worktree + implemented tasks, registers the
+    five focuses (manifest agents.review) as queued agents, pre-creates
+    the sandboxes, dispatches ≤5 in parallel — each reviewer loading its
+    golang-* skills via --skill (/opt/cc-skills-golang, baked in the
+    image) — then phase gated + telemetry.review + summary table.
+    Reports: reviews/<focus>.md.
 ```
 
 `pi -p` exits 0 even on model failure, so the verdict comes from the JSONL:
@@ -107,7 +124,9 @@ Per run, `<run>/workflow.json` (§4.1; `<run>` = `v2/run_dir.sh <N>`, outside th
 `queued → running → reported → done` (exceptional `blocked`, `failed`);
 phase states `pending → running → gated → done` (`gated` = awaiting human
 approval). Concurrent agent-state writes are serialized via
-`.workflow.lock`. Telemetry: per-agent `{tokens, wall_seconds}` from the
+the portable mkdir lock `.workflow.lockd` (owner-PID file; the owner
+releases it on exit, a dead owner's lock is stolen after >120 s).
+Telemetry: per-agent `{tokens, wall_seconds}` from the
 event log (`message_end.usage.totalTokens`), rolled up per phase.
 
 ## Conductor state machine (Task 2.1)

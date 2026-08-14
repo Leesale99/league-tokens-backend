@@ -33,6 +33,14 @@ RUN curl -fsSLo /tmp/go.tgz https://go.dev/dl/go1.26.0.linux-arm64.tar.gz \
     && ln -s /usr/local/go/bin/go /usr/local/bin/go \
     && go version
 
+# Go review skills (Phase 4 Task 4.1 — parity with CI's review.yml, which
+# clones samber/cc-skills-golang and loads the golang-* skills via --skill;
+# dispatch.sh passes the same --skill flags against this bake for the five
+# reviewer roles). Pinned to the commit the pr-pipeline matrix expects.
+RUN git clone --depth 1 https://github.com/samber/cc-skills-golang.git /opt/cc-skills-golang \
+    && git -C /opt/cc-skills-golang checkout --quiet 30cdf15cde8db8730c42a2918d7cdb4505f5ff54 \
+    && rm -rf /opt/cc-skills-golang/.git
+
 # Commits made inside implementer sandboxes must carry the project identity
 # (same as the host git config) and must not trip git's ownership check on
 # host-mounted worktree files (safe.directory). Changing the image requires

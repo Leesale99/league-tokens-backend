@@ -55,6 +55,8 @@ die() { printf 'dispatch: %s\n' "$*" >&2; exit 1; }
 # ---- contains every tracked file) and mount .git rw via `extras` — bare
 # ---- paths in `extras` are rw.
 extras=()   # per-role mounts beyond the shared repo :ro mount
+phase="research"   # workflow.json agent map: .phases.<phase>.agents
+skills=()   # --skill paths baked into the image (reviewer roles, CI parity)
 case "$role" in
   repo-researcher)
     primary="$research_dir"; nets=(opencode.ai pi.dev)
@@ -87,6 +89,30 @@ case "$role" in
     primary="$repo_root/.worktrees/issue-$issue"; nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org)
     extras=("$run_dir:ro" "$repo_root/.git")
     report="$primary/docs/issue-workflows/$issue/reports/$topic.review.md" ;;
+  # ---- Phase 4: the five final-review focuses (parity with CI — the
+  # ---- .github/prompts/*.md rubrics + golang-* skills from the pr-pipeline
+  # ---- matrix). Reviewers are non-task roles: rw primary = the run dir
+  # ---- (report writing), shared repo :ro mount exposes the feature branch
+  # ---- at .worktrees/issue-<N> and the .git objects for the diff.
+  reviewer-correctness)
+    primary="$run_dir"; nets=(opencode.ai pi.dev); phase="review"
+    skills=(golang-error-handling golang-safety golang-concurrency)
+    report="$run_dir/reviews/correctness.md" ;;
+  reviewer-quality)
+    primary="$run_dir"; nets=(opencode.ai pi.dev); phase="review"
+    skills=(golang-code-style golang-naming golang-documentation)
+    report="$run_dir/reviews/quality.md" ;;
+  reviewer-quality-depth)
+    primary="$run_dir"; nets=(opencode.ai pi.dev); phase="review"
+    skills=(golang-testing golang-performance golang-observability golang-modernize)
+    report="$run_dir/reviews/quality-depth.md" ;;
+  reviewer-security)
+    primary="$run_dir"; nets=(opencode.ai pi.dev); phase="review"
+    skills=(golang-security golang-dependency-management)
+    report="$run_dir/reviews/security.md" ;;
+  reviewer-requirements)
+    primary="$run_dir"; nets=(opencode.ai pi.dev); phase="review"
+    report="$run_dir/reviews/requirements.md" ;;
   *) die "unknown role '$role' — see the role table in scripts/issue-workflow/v2/README.md" ;;
 esac
 
@@ -114,6 +140,12 @@ fi
 # before any network-policy side effects.
 if [[ "$role" == "task-implementer" || "$role" == "task-reviewer" ]]; then
   [[ -f "$primary/.git" ]] || die "worktree missing at $primary — run v2/worktree.sh <issue> <slug> first"
+fi
+# final reviewers diff the feature branch inside the worktree (visible via
+# the shared repo :ro mount) — same precondition.
+if [[ "$phase" == "review" ]]; then
+  [[ -f "$repo_root/.worktrees/issue-$issue/.git" ]] \
+    || die "worktree missing at $repo_root/.worktrees/issue-$issue — run v2/worktree.sh <issue> <slug> first"
 fi
 
 # ---- 1. network policy (global allow-list; idempotent) ----
@@ -156,7 +188,7 @@ brief="$(cd "$(dirname "$brief")" && pwd)/$(basename "$brief")"
 
 # ---- 3. headless dispatch (event log captured on the host) ----
 log="$run_dir/agents/$topic.jsonl"
-mkdir -p "$run_dir/agents" "$run_dir/reports"
+mkdir -p "$run_dir/agents" "$run_dir/reports" "$run_dir/reviews"
 # A stale report from an earlier round must never satisfy the verdict.
 rm -f "$report"
 role_file="$repo_root/scripts/issue-workflow/v2/roles/$role.md"
@@ -164,15 +196,24 @@ role_file="$repo_root/scripts/issue-workflow/v2/roles/$role.md"
 message="Issue #$issue — run the $role role contract at $role_file; follow it and the attached brief exactly. Report path (absolute, writable): $report. Write your report there, then stop."
 if [[ "$role" == "task-implementer" || "$role" == "task-reviewer" ]]; then
   wd="$primary"; message="$message Worktree (your working dir, cd is done for you): $primary. Read-only workflow files: $run_dir."
+elif [[ "$phase" == "review" ]]; then
+  wd="$repo_root"
+  message="$message The feature branch checkout is mounted read-only at $repo_root/.worktrees/issue-$issue — review THAT checkout (cd into it; never review the main checkout). Line 1 of your report must be the frontmatter line \`reviewed_head: <sha>\` with the sha you reviewed (\`git -C $repo_root/.worktrees/issue-$issue rev-parse HEAD\`)."
 else
   wd="$repo_root"
   message="$message The repo is mounted read-only at its canonical paths."
 fi
 
+# ---- reviewer roles load their golang-* skills explicitly (baked into the
+# ---- image at /opt/cc-skills-golang — parity with review.yml's --skill
+# ---- loading; deterministic, no auto-discovery dependency).
+skill_args=()
+for s in "${skills[@]}"; do skill_args+=(--skill "/opt/cc-skills-golang/skills/$s"); done
+
 t0="$(date +%s.%N)"
 set +e
 sbx exec -w "$wd" "$sandbox" pi -p "@$brief" "$message" --mode json \
-  --provider "$PROVIDER" --model "$MODEL" >"$log" 2>"$log.err"
+  --provider "$PROVIDER" --model "$MODEL" "${skill_args[@]}" >"$log" 2>"$log.err"
 code=$?
 set -e
 t1="$(date +%s.%N)"
@@ -196,34 +237,47 @@ tokens="$(jq -r 'select(.type=="message_end") | .message.usage.totalTokens // em
   | awk '{s += $1} END {print s + 0}')"
 
 # ---- 4. workflow.json: agent state + telemetry (serialized via lock) ----
-[[ -f "$run_dir/workflow.json" ]] || die "workflow.json missing — run research.sh <issue> first"
-# ---- 4. workflow.json: agent state + telemetry (serialized via a
-# ---- portable mkdir lock — macOS has no flock(1), so the Linux util
-# ---- cannot be used host-side). The lock dir is stolen only when stale
-# ---- (>120 s — the owner died); nothing removes it on exit, so a dead
-# ---- process can never delete a live owner's lock (the Task 1.2 lesson).
+[[ -f "$run_dir/workflow.json" ]] || die "workflow.json missing — run /issue-start <issue> first"
 lock="$run_dir/.workflow.lockd"
-while ! mkdir "$lock" 2>/dev/null; do
-  if [[ -d "$lock" ]] && [[ "$(find "$lock" -mmin +2 2>/dev/null)" == "$lock" ]]; then
-    rmdir "$lock" 2>/dev/null || true
-    continue
-  fi
-  sleep 0.2
-done
+# Portable mkdir lock (macOS has no flock(1)). The owner writes its PID
+# into the lock dir and releases it on exit; a lock whose owner file no
+# longer matches the writer is never removed by that writer, so a dying
+# holder can never delete a NEW holder's lock (the Task 1.2 race). A
+# dead owner (killed -9) leaves the lock behind — stolen via the stale
+# check (>120 s). Healthy concurrent writers therefore serialize only
+# for the duration of the write (the Task 1.2-era design kept the lock
+# forever, stalling every parallel dispatch after the first by ~120 s —
+# measured on the Phase 4 review pool).
+acquire_lock() {
+  while ! mkdir "$lock" 2>/dev/null; do
+    if [[ -d "$lock" ]] && [[ "$(find "$lock" -mmin +2 2>/dev/null)" == "$lock" ]]; then
+      rm -rf "$lock" 2>/dev/null || true   # stale owner (dead) — steal
+      continue
+    fi
+    sleep 0.2
+  done
+  echo $$ > "$lock/owner" 2>/dev/null || true
+}
+release_lock() {
+  [[ -f "$lock/owner" ]] && [[ "$(cat "$lock/owner" 2>/dev/null)" == "$$" ]] && rm -rf "$lock"
+}
+trap release_lock EXIT
+acquire_lock
 tmp="$run_dir/workflow.json.tmp.$$"
 # self-register the agent entry when it does not exist yet (standalone
 # dispatches of phase-level roles such as context-synthesizer).
-jq --arg topic "$topic" --arg role "$role" --arg sandbox "$sandbox" \
+jq --arg phase "$phase" --arg topic "$topic" --arg role "$role" --arg sandbox "$sandbox" \
    --arg report "${report#"$run_dir"/}" \
-   '.phases.research.agents[$topic] //= {role: $role, sandbox: $sandbox, report: $report}' \
+   '.phases[$phase].agents[$topic] //= {role: $role, sandbox: $sandbox, report: $report}' \
    "$run_dir/workflow.json" >"$tmp"
 mv "$tmp" "$run_dir/workflow.json"
-jq --arg topic "$topic" --arg state "$state" --arg reason "$reason" \
+jq --arg phase "$phase" --arg topic "$topic" --arg state "$state" --arg reason "$reason" \
    --argjson tokens "${tokens:-0}" --argjson wall "$wall" \
-   '.phases.research.agents[$topic] |= (.state = $state | .reason = $reason | .telemetry = {tokens: $tokens, wall_seconds: $wall})' \
+   '.phases[$phase].agents[$topic] |= (.state = $state | .reason = $reason | .telemetry = {tokens: $tokens, wall_seconds: $wall})' \
    "$run_dir/workflow.json" >"$tmp"
 mv "$tmp" "$run_dir/workflow.json"
 rm -f "$tmp"
+release_lock   # explicit; the EXIT trap is the safety net
 
 # ---- five-line summary + next command
 printf 'dispatch:  issue #%s · %s · %s\n' "$issue" "$role" "$topic"

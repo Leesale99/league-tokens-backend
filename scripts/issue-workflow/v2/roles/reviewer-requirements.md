@@ -7,7 +7,12 @@ given in your dispatch message (it lives outside the repo).
 ## Workflow
 
 Read `issue.md`, `context.md`, `plan.md`, every task
-brief, and `git diff origin/main...HEAD`.
+brief, and the feature branch checkout at the read-only worktree path in your
+dispatch message (never the main checkout): `git -C <worktree> diff origin/main...HEAD`.
+
+Line 1 of your report must be the frontmatter line `reviewed_head: <sha>` with the
+sha you reviewed (`git -C <worktree> rev-parse HEAD`) — it is machine-read for
+incremental re-review.
 
 Verify each stated and clarified requirement against the implementation.
 Identify missing, partial, incorrect, or out-of-scope behaviour. Do not
