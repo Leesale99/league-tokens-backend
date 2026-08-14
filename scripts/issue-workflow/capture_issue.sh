@@ -6,7 +6,7 @@ set -euo pipefail
 
 issue_number="${1:?issue number is required}"
 board_item_id="${2:?board item id is required}"
-issue_dir="docs/issue-workflows/$issue_number"
+issue_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/v2/run_dir.sh" "$issue_number")"
 issue_file="$issue_dir/issue.md"
 
 if [[ -e "$issue_file" ]]; then

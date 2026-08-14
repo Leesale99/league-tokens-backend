@@ -3,20 +3,19 @@ set -euo pipefail
 
 # Usage: archive_issue.sh <issue-number>
 #
-# Copies docs/issue-workflows/<issue>/ into the league-tokens vault as the raw
+# Copies issue-workflows/<issue>/ (run_dir.sh) into the league-tokens vault as the raw
 # archive tree archive/<NNNN>-<slug>/ (history, kept wholesale). Performs no
-# curated writes and no commits — the /archive-issue prompt then writes the
+# curated writes and no commits — the /issue-archive prompt then writes the
 # landing note, decision/lesson entries, and INDEX updates via the obsidian
 # tool, and creates the single atomic vault commit.
 #
 # Vault root: $LEAGUE_TOKENS_VAULT or ~/Projects/vaults/league-tokens.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 VAULT_ROOT="${LEAGUE_TOKENS_VAULT:-$HOME/Projects/vaults/league-tokens}"
 
 issue_number="${1:?issue number is required}"
-src="$REPO_ROOT/docs/issue-workflows/$issue_number"
+src="$(bash "$SCRIPT_DIR/v2/run_dir.sh" "$issue_number")"
 
 [[ -d "$src" ]] || { printf 'No workflow dir: %s\n' "$src" >&2; exit 1; }
 [[ -d "$VAULT_ROOT" ]] || { printf 'Vault not found: %s (set LEAGUE_TOKENS_VAULT)\n' "$VAULT_ROOT" >&2; exit 1; }

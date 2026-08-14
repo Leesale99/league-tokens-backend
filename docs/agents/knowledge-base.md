@@ -10,7 +10,7 @@ If it describes the **current system**, it belongs in the repo. If it is **histo
 |---|---|
 | `docs/specs/*` (canonical, frozen until MVP) | Repo only |
 | `docs/adr/*` | Repo only; a superseded ADR's old state gets a vault decision-log entry before being overwritten |
-| `docs/issue-workflows/*` (active issue) | Repo while active → vault archive on close (`/archive-issue <N>`), then deleted locally |
+| `docs/issue-workflows/*` (active issue) | Repo while active → vault archive on close (`/issue-archive <N>`), then deleted locally |
 | Decision log — small decisions, rejected alternatives, chat-made decisions | Vault (`decisions/`, IDs `D-NNNN`) |
 | Lessons/gotchas — recurring review findings, postmortems | Vault (`lessons/`, IDs `L-NNN`) |
 | Topic routers — thin orientation + repo pointers, created lazily | Vault (`topics/`) |
@@ -21,7 +21,7 @@ Never copy repo content into curated vault notes; point with `repo-ref`. Excepti
 
 ## When agents search the vault
 
-**DO:** past/closed work ("why did we…", "didn't we already try…"); prior art at issue start (`/start-issue`, `/gather-context`); explicit "check the wiki"; synthesis across multiple issues.
+**DO:** past/closed work ("why did we…", "didn't we already try…"); prior art at issue start (`/issue-start`, `/issue-research`); explicit "check the wiki"; synthesis across multiple issues.
 
 **DON'T:** current specs/ADRs/code questions → read the repo (CONTEXT.md → `docs/adr/` → `docs/specs/`). On conflict the repo wins; the agent fixes or flags the wiki note and says so in one line.
 
