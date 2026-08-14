@@ -50,11 +50,12 @@ plus the run dir. Nothing the workflow writes ever dirties `git status`.
    CI is the only gate), pushes the worktree branch and opens the PR
    (`open_pr.sh`), moves the board item to In review and updates labels.
 7. `/issue-archive <N>` — archives the run dir into the knowledge-base
-   vault (`archive_issue.sh`), writes the landing note + decision/lesson
-   entries via the obsidian tool (single atomic vault commit), removes the
-   issue's sandboxes (`sbx rm issue-<N>-*`) and worktree
-   (`v2/worktree.sh <N> remove`), appends the telemetry block, and moves
-   the board item to Done.
+   vault (`archive_issue.sh`), writes the landing note (with the telemetry
+   block from `v2/telemetry.sh`) + decision/lesson entries via the obsidian
+   tool (single atomic vault commit; lesson-mining explicitly checks
+   recurring review findings for prompt/skill updates), then
+   `v2/cleanup.sh <N>` removes the issue's sandboxes and worktree, and the
+   board item moves to Done.
 
 ## Tracks
 

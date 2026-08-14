@@ -25,8 +25,6 @@ SLUG="smoke-implement"
 WT="$REPO/.worktrees/issue-$N"
 RUN_DIR="$(bash "$V2_DIR/run_dir.sh" "$N")"
 OUT="${OUT:-$SPIKE_DIR/out/implement-test}"
-SB_IMPL="issue-$N-task-implementer"
-SB_REV="issue-$N-task-reviewer"
 
 log() { printf '\n=== %s\n' "$*"; }
 pass() { printf '  ok: %s\n' "$*"; }
@@ -207,5 +205,5 @@ pass "main checkout HEAD + working tree unchanged"
 
 log "summary"
 git -C "$WT" log --oneline feat/$N-$SLUG | head -5
-printf '  cleanup: sbx rm --force %s %s; %s %s remove; rm -rf %s/tasks-fix\n' \
-  "$SB_IMPL" "$SB_REV" "$V2_DIR/worktree.sh" "$N" "$RUN_DIR"
+printf '  cleanup: %s/cleanup.sh %s; rm -rf %s/tasks-fix\n' \
+  "$V2_DIR" "$N" "$RUN_DIR"

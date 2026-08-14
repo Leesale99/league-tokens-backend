@@ -220,6 +220,4 @@ pass "main checkout untouched"
 
 printf '\n=== re-review acceptance PASSED (rounds 1→2→3, tokens %s → %s) ===\n' "$t1" "$t2"
 printf 'cleanup (Task 5.2 leaves sandboxes running; this is the manual command):\n'
-# shellcheck disable=SC2016  # literal shell snippet printed for the user
-printf '  for r in correctness quality quality-depth security requirements; do sbx rm --force issue-%s-reviewer-"$r"; done\n' "$N"
-printf '  %s/worktree.sh %s remove\n' "$V2_DIR" "$N"
+printf '  %s/cleanup.sh %s\n' "$V2_DIR" "$N"

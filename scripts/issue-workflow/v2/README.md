@@ -88,6 +88,17 @@ scripts/issue-workflow/v2/research.sh <issue>
     pre-create one sandbox per role → dispatch ≤4 in parallel →
     phase gated + telemetry totals → summary table.
 
+scripts/issue-workflow/v2/telemetry.sh <issue>
+    prints the run's telemetry as a markdown block (track, review rounds,
+    per-phase tokens/wall/dispatches, per-round review tokens) for the
+    archive landing note's `## Telemetry` section (Task 5.2). Read it
+    BEFORE the run dir is deleted.
+
+scripts/issue-workflow/v2/cleanup.sh <issue>
+    removes the issue's role sandboxes (issue-<N>-*) and its worktree —
+    the ONLY place sandboxes are destroyed (Task 5.2). Spike runners print
+    this command instead of running it.
+
 scripts/issue-workflow/v2/dispatch.sh [--create-only] <issue> <role> <brief-path>
     §4.4 primitive: policy → sandbox create/reuse → pi -p @brief headless
     (event log → agents/<topic>.jsonl) → verdict (reported | failed) →

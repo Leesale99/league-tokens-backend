@@ -111,4 +111,4 @@ printf 'telemetry: %s tokens · %s s · %s dispatches\n' \
   "$(jq -r '.telemetry.research.dispatches' "$run_dir/workflow.json")"
 printf '\nEvidence:\n  workflow.json: %s\n  reports:       %s/*/report.md\n  context.md:    %s/context.md\n  event logs:    %s/agents/*.jsonl\n' \
   "$run_dir/workflow.json" "$research_dir" "$run_dir" "$run_dir"
-printf '\nCleanup (after inspection): sbx rm --force issue-%s-repo-researcher issue-%s-docs-researcher issue-%s-web-researcher issue-%s-kb-researcher issue-%s-context-synthesizer\n' "$N" "$N" "$N" "$N" "$N"
+printf '\nCleanup (after inspection): %s/cleanup.sh %s\n' "$V2_DIR" "$N"

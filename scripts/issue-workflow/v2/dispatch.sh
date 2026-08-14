@@ -81,12 +81,14 @@ case "$role" in
     # per-worktree state must be writable for commits). No GitHub
     # credentials: github.com is not in the allow-list, so a push fails by
     # policy. proxy.golang.org + sum.golang.org serve the Go toolchain
-    # (repo has no vendor/).
-    primary="$repo_root/.worktrees/issue-$issue"; nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org)
+    # (repo has no vendor/). phase=implement (Task 5.2: agents land under
+    # .phases.implement.agents — the old research default polluted the
+    # research telemetry aggregation).
+    primary="$repo_root/.worktrees/issue-$issue"; nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org); phase="implement"
     extras=("$run_dir:ro" "$repo_root/.git")
     report="$primary/docs/issue-workflows/$issue/reports/$topic.implement.md" ;;
   task-reviewer)
-    primary="$repo_root/.worktrees/issue-$issue"; nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org)
+    primary="$repo_root/.worktrees/issue-$issue"; nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org); phase="implement"
     extras=("$run_dir:ro" "$repo_root/.git")
     report="$primary/docs/issue-workflows/$issue/reports/$topic.review.md" ;;
   # ---- Phase 4: the five final-review focuses (parity with CI — the
