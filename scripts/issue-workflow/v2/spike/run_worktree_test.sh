@@ -24,7 +24,7 @@ SLUG="worktree-test"
 WT="$REPO/.worktrees/issue-$N"
 SB="issue-$N-task-implementer"
 OUT="${OUT:-$SPIKE_DIR/out/worktree-test}"
-RUN_DIR="$REPO/docs/issue-workflows/$N"
+RUN_DIR="$(bash "$V2_DIR/run_dir.sh" "$N")"
 
 log() { printf '\n=== %s\n' "$*"; }
 pass() { printf '  ok: %s\n' "$*"; }

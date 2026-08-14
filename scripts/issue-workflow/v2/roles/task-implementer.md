@@ -35,7 +35,7 @@ with:
 
 ## Rules
 
-- Work only inside the worktree. Do not modify `docs/issue-workflows/<N>/`
-  files outside it, briefs, or the plan.
+- Work only inside the worktree. Do not modify the read-only workflow
+  files (briefs, plan, context) or anything outside the worktree.
 - If the brief is impossible or self-contradictory, do not improvise —
   state the blocker in your report and stop.

@@ -14,7 +14,7 @@ set -euo pipefail
 
 REPO="/Users/aleksrdvn/Projects/league-tokens/backend"
 N=999
-run_dir="$REPO/docs/issue-workflows/$N"
+run_dir="$(bash "$V2_DIR/run_dir.sh" "$N")"
 research_dir="$run_dir/research"
 
 command -v sbx >/dev/null 2>&1 || { echo "sbx CLI not found on the host." >&2; exit 2; }

@@ -26,7 +26,7 @@ role="${2:?role is required}"
 brief="${3:?brief path is required}"
 
 repo_root="$(git rev-parse --show-toplevel)"
-run_dir="$repo_root/docs/issue-workflows/$issue"
+run_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run_dir.sh" "$issue")"
 research_dir="$run_dir/research"
 # topic id: the topic-dir slug for research briefs (research/<NN>-<slug>/brief.md),
 # or the brief filename minus .md for phase-level briefs (e.g. the synthesis brief).
@@ -47,14 +47,14 @@ die() { printf 'dispatch: %s\n' "$*" >&2; exit 1; }
 # ---- report path, and per-role extra mounts (`extras`). Enforced here;
 # ---- the table lives in scripts/issue-workflow/v2/README.md. Every role
 # ---- gets the model endpoints; role-specific hosts are added below. The
-# ---- mount assembly (below the case) adds the shared repo mounts — every
-# ---- top-level directory :ro individually (the old design mounted the
-# ---- repo root :ro and relied on the rw primary shadowing it, which
-# ---- sbx/virtiofs does not allow; host acceptance Phase 1: nested
-# ---- rw-in-ro mounts fail with EROFS) — plus a mirror of the top-level
-# ---- repo FILES into the run dir's _repo/ (sbx mounts directories only).
-# ---- Bare paths in `extras` are rw (e.g. .git for task roles).
-extras=()   # per-role mounts beyond the shared per-entry repo assembly
+# ---- mount assembly (below the case) adds the shared repo mount: the
+# ---- repo root :ro wholesale (non-task roles only) — valid because the
+# ---- rw primary lives OUTSIDE the repo (run_dir.sh); sbx/virtiofs gives
+# ---- EROFS on a rw workspace nested inside a :ro mount (host acceptance,
+# ---- Phase 1). Task roles skip the repo mount (their worktree primary
+# ---- contains every tracked file) and mount .git rw via `extras` — bare
+# ---- paths in `extras` are rw.
+extras=()   # per-role mounts beyond the shared repo :ro mount
 case "$role" in
   repo-researcher)
     primary="$research_dir"; nets=(opencode.ai pi.dev)
@@ -90,45 +90,19 @@ case "$role" in
   *) die "unknown role '$role' — see the role table in scripts/issue-workflow/v2/README.md" ;;
 esac
 
-# ---- mount assembly. HOST ACCEPTANCE FINDING: sbx/virtiofs does NOT allow
-# ---- a rw workspace nested inside a :ro mount — the ro parent wins and
-# ---- writes fail EROFS (probe matrix on the host, Phase 1 batch). The old
-# ---- design mounted the repo root :ro and relied on the rw primary
-# ---- 'shadowing' it; that shadowing is broken. Instead, every repo
-# ---- top-level entry is mounted :ro INDIVIDUALLY, excluding the run-dir
-# ---- subtree (docs/issue-workflows — the rw primary lives under it), .git
-# ---- (mounted rw for task roles), and .worktrees (the task primary). This
-# ---- keeps the run dir inside the repo (conductor-visible) with zero
-# ---- overlapping mounts.
-repo_mounts=()
-for e in "$repo_root"/* "$repo_root"/.[!.]*; do
-  [[ -d "$e" ]] || continue   # sbx mounts directories only
-  case "$e" in
-    "$repo_root/.git"|"$repo_root/.worktrees") continue ;;
-    "$repo_root/docs")
-      # docs contains the run dir; mount its children individually.
-      for c in "$e"/*; do
-        [[ -d "$c" ]] || continue
-        [[ "$c" == "$repo_root/docs/issue-workflows" ]] && continue
-        repo_mounts+=("$c:ro")
-      done ;;
-    *) repo_mounts+=("$e:ro") ;;
-  esac
-done
+# ---- mount assembly. The repo root is mounted :ro wholesale: the rw
+# ---- primary lives OUTSIDE the repo (run_dir.sh — ~/…/issue-workflows/
+# ---- <N>), so no rw workspace is nested inside a :ro mount. That nesting
+# ---- is what sbx/virtiofs rejects with EROFS (host acceptance, Phase 1 —
+# ---- the old per-entry enumeration + _repo mirror were its workaround).
+# ---- Task roles do NOT get the repo mount at all: they work inside the
+# ---- worktree checkout (primary, rw), which contains every tracked file.
 mounts=("$primary")
-mounts+=("${repo_mounts[@]}")
-mounts+=("${extras[@]}")
-
-# Top-level repo FILES cannot be mounted (sbx accepts directories only).
-# Mirror them into the gitignored run dir at every dispatch (refreshed,
-# never committed) so non-worktree roles can still read CONTEXT.md,
-# go.mod, etc. Task roles work inside the worktree checkout instead and
-# do not need this.
-mkdir -p "$run_dir/_repo"
-for f in "$repo_root"/* "$repo_root"/.[!.]*; do
-  [[ -f "$f" ]] || continue
-  cp "$f" "$run_dir/_repo/"
-done
+if [[ "$role" == "task-implementer" || "$role" == "task-reviewer" ]]; then
+  mounts+=("${extras[@]}")
+else
+  mounts+=("$repo_root:ro" "${extras[@]}")
+fi
 
 # kb-researcher needs the vault; fail loudly when it is missing.
 if [[ "$role" == "kb-researcher" ]] && [[ ! -d "$vault" ]]; then
@@ -192,7 +166,7 @@ if [[ "$role" == "task-implementer" || "$role" == "task-reviewer" ]]; then
   wd="$primary"; message="$message Worktree (your working dir, cd is done for you): $primary. Read-only workflow files: $run_dir."
 else
   wd="$repo_root"
-  message="$message Repo top-level files (CONTEXT.md, AGENTS.md, go.mod, …) are mirrored at $run_dir/_repo/; directories are mounted read-only at their canonical paths."
+  message="$message The repo is mounted read-only at its canonical paths."
 fi
 
 t0="$(date +%s.%N)"

@@ -16,8 +16,7 @@ set -euo pipefail
 
 issue="${1:?issue number is required}"
 action="${2:?action is required (plan-done, task-done <task-file>, pr-done, track <S|M|L>)}"
-repo_root="$(git rev-parse --show-toplevel)"
-run_dir="$repo_root/docs/issue-workflows/$issue"
+run_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run_dir.sh" "$issue")"
 wf="$run_dir/workflow.json"
 [[ -d "$run_dir" ]] || { echo "mark: no run directory $run_dir — run /issue-start $issue first" >&2; exit 1; }
 tmp="$wf.tmp.$$"

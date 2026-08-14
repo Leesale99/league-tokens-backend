@@ -3,7 +3,7 @@
 # Dispatches the approved research backlog in parallel (≤4), collects
 # reports, and updates workflow.json (phase state + telemetry). Host-side.
 #
-# The backlog is the set of briefs: docs/issue-workflows/<N>/research/
+# The backlog is the set of briefs: issue-workflows/<N>/research/ (run_dir.sh)
 # <NN>-<slug>/brief.md. Each brief's FIRST LINE must be `role: <role>`
 # (a research role from the v2 README table) so the dispatch is
 # mechanical. Workflow phases: pending → running → gated → done.
@@ -22,7 +22,7 @@ mode="${2:-}"
 case "$mode" in ""|--finalize|--redispatch) ;; *) die "unknown mode: $mode" ;; esac
 repo_root="$(git rev-parse --show-toplevel)"
 v2="$repo_root/scripts/issue-workflow/v2"
-run_dir="$repo_root/docs/issue-workflows/$issue"
+run_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run_dir.sh" "$issue")"
 research_dir="$run_dir/research"
 wf="$run_dir/workflow.json"
 

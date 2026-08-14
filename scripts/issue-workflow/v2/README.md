@@ -24,18 +24,21 @@ Enforced by `dispatch.sh` — never by convention.
 
 | Role | Primary workspace (rw) | Extra mounts (`:ro`) | Network allow-list |
 |---|---|---|---|
-| `repo-researcher` | `docs/issue-workflows/<N>/research/` | repo | model endpoints only |
+| `repo-researcher` | `<run>/research/` | repo `:ro` | model endpoints only |
 | `docs-researcher` | same | repo | model + `context7.com` |
 | `web-researcher` | same | repo | model + `api.openai.com` (search provider; adjust if the host configures another) |
 | `kb-researcher` | same | repo, vault (`LEAGUE_TOKENS_VAULT` or `~/Projects/vaults/league-tokens`) | model endpoints only |
-| `context-synthesizer` | `docs/issue-workflows/<N>/` | repo | model endpoints only |
-| `plan-critic` | same | repo | model endpoints only |
+| `context-synthesizer` | `<run>` | repo `:ro` | model endpoints only |
+| `plan-critic` | same | repo `:ro` | model endpoints only |
 | `task-implementer` | `.worktrees/issue-<N>` rw | run dir `:ro`, `.git` rw | model endpoints + Go module proxy (`proxy.golang.org`, `sum.golang.org` — the repo has no `vendor/`) |
 | `task-reviewer` | same | same | same |
 
 Each role also declares its expected **report path**: research roles write
 `research/<NN>-<slug>/report.md`; the synthesizer writes `context.md`; the
-plan-critic writes `plan-critic.md`; task roles write
+plan-critic writes `plan-critic.md` — all at the absolute paths the
+dispatch message names (the run dir lives OUTSIDE the repo, resolved by
+`v2/run_dir.sh <N>` → `~/Projects/league-tokens/issue-workflows/<N>`; the
+conductor's sandbox mounts it rw alongside the repo). Task roles write
 `reports/<task>.implement.md` / `reports/<task>.review.md` **inside the
 worktree** (the worktree's `docs/issue-workflows/<N>/` is git-ignored, so
 reports can never enter a commit).
@@ -49,25 +52,23 @@ The verdict (`reported | failed`) checks that path after the run.
 
 - The primary workspace is the run's `research/` dir (or the run dir for
   the synthesizer) mounted rw at its host path — agents can write only
-  their own artifact, never code. HOST ACCEPTANCE (Phase 1): sbx/virtiofs
-  rejects a rw workspace nested inside a `:ro` mount (EROFS — the ro
-  parent wins), so the repo root is never mounted as one `:ro` block.
-  Instead every repo top-level directory is mounted `:ro` individually,
-  excluding the run-dir subtree, `.git`, and `.worktrees`; top-level repo
-  FILES (CONTEXT.md, go.mod, …) are mirrored into the run dir's `_repo/`
-  at each dispatch (sbx mounts directories only). Task roles additionally
-  mount `.git` rw and the run dir `:ro`.
+  their own artifact, never code. The repo root is mounted `:ro`
+  wholesale — valid because the run dir lives OUTSIDE the repo (the
+  relocation: sbx/virtiofs gives EROFS on a rw workspace nested inside a
+  `:ro` mount, host acceptance Phase 1; the pre-relocation per-entry
+  `:ro` enumeration + `_repo/` file mirror were its workaround and are
+  gone). Task roles get NO repo mount (their worktree primary contains
+  every tracked file) plus `.git` rw and the run dir `:ro` via `extras`.
 - All roles get the model endpoints (`opencode.ai`, `pi.dev`) — pi needs the
   model. "No network" means *no additional* hosts; egress to anything
   unlisted is blocked (403).
 - Sandboxes are long-lived per issue: `issue-<N>-<role>`, created once,
   reused across dispatches, removed at archive (Task 5.2).
-- `kb-researcher` also gets the vault `:ro` (its only extra mount — the
-  repo pieces come from the shared per-entry assembly).
+- `kb-researcher` also gets the vault `:ro` (its only extra mount).
 
 ## Brief contract
 
-`docs/issue-workflows/<N>/research/<NN>-<slug>/brief.md` — self-contained
+`<run>/research/<NN>-<slug>/brief.md` (`<run>` = `v2/run_dir.sh <N>`) — self-contained
 per topic: **line 1 is `role: <role>`** (machine-read by `research.sh`), then
 the question, scope, expected sources, constraints, and report format.
 
@@ -102,7 +103,7 @@ research.sh <issue> --finalize   mark research done after the human approved
 
 ## workflow.json
 
-Per run, `docs/issue-workflows/<N>/workflow.json` (§4.1). Agent states
+Per run, `<run>/workflow.json` (§4.1; `<run>` = `v2/run_dir.sh <N>`, outside the repo). Agent states
 `queued → running → reported → done` (exceptional `blocked`, `failed`);
 phase states `pending → running → gated → done` (`gated` = awaiting human
 approval). Concurrent agent-state writes are serialized via
@@ -168,12 +169,12 @@ Implementer sandbox mounts (`dispatch.sh` role spec — enforced there):
 |---|---|---|
 | `.worktrees/issue-<N>` | rw (primary) | the implementation worktree — the only rw working files |
 | `<repo>/.git` | rw | git objects + per-worktree HEAD/index for commits |
-| `docs/issue-workflows/<N>` | ro | briefs/plan/context (live host copy, never stale) |
+| `<run>` (`issue-workflows/<N>`) | ro | briefs/plan/context (live host copy, outside the repo) |
 
 The main checkout is **never mounted**; `github.com` is not in the network
 allow-list, and no credentials exist in the sandbox, so a push fails by
 policy. The base image bakes the project git identity + `safe.directory '*'`
 (commit authorship from inside sandboxes) — rebuild + `sbx template load`
 after changing `templates/base.Dockerfile` (`spike/run_worktree_test.sh` does
-both). Contract files for `task-implementer`/`task-reviewer` land in Task 3.2;
-the sandbox + mounts are live from Task 3.1.
+both). The `task-implementer`/`task-reviewer` contract files live in
+`v2/roles/`; their sandboxes + mounts are live (Tasks 3.1/3.2).

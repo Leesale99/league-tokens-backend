@@ -6,7 +6,7 @@ set -euo pipefail
 
 issue_number="${1:?issue number is required}"
 repo_root="$(git rev-parse --show-toplevel)"
-issue_dir="$repo_root/docs/issue-workflows/$issue_number"
+issue_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../v2/run_dir.sh" "$issue_number")"
 session="issue-$issue_number-final-review"
 
 if [[ ! -d "$issue_dir" ]]; then

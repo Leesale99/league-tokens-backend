@@ -7,7 +7,7 @@ Archive issue #$1 into the knowledge base. Load the `knowledge-base` skill first
 Preconditions — verify before touching anything:
 
 - The issue's PR is merged: check `gh pr list --state merged --limit 30` for the `feat/$1-…` branch / issue title. If unclear, ask the user.
-- `docs/issue-workflows/$1/` exists.
+- The run dir exists: `$(scripts/issue-workflow/v2/run_dir.sh $1)` (resolve it once at the start and use it throughout).
 
 Steps:
 
@@ -17,7 +17,7 @@ Steps:
 4. **Suggest decision-log and lesson entries.** Draft each candidate as a concrete note (next free ID, title, 2–3 line body), mining: `context.md`'s decisions-and-rejected-alternatives, chat-made decisions recorded in the artifacts, and review findings worth watching for recurrence. Present the drafts as a numbered list; the user approves, edits, or drops each. Write only approved entries, following `templates/decision.md` / `templates/lesson.md`.
 5. Topic pages: for each touched topic, create or refresh a thin router — only if it now links ≥2 entries or is clearly recurring. Update `INDEX.md` only if the map itself changed.
 6. Commit the vault in **one** atomic commit `kb: archive issue #$1` and push (snippet in the knowledge-base skill). If push fails, commit locally and say so.
-7. Clean the repo: remove the local records with `rm -rf docs/issue-workflows/$1/` (they are untracked; no PR needed). Move the board item to Done: `scripts/issue-workflow/set_status.sh <board_item_id> done` using `board_item_id` from the archived `issue.md` frontmatter.
+7. Clean up: remove the local records with `rm -rf <run-dir>` (they live outside the repo; no PR needed). Move the board item to Done: `scripts/issue-workflow/set_status.sh <board_item_id> done` using `board_item_id` from the archived `issue.md` frontmatter.
 8. Report: archive paths, landing note, decision/lesson IDs created, topic updates, vault commit hash, board status.
 
 Do not change product code in this phase.

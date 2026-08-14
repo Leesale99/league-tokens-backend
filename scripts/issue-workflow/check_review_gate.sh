@@ -3,12 +3,12 @@ set -euo pipefail
 
 # Usage: check_review_gate.sh <issue-number>
 # Machine-checkable gate for the /issue-open-pr step. Exits 0 only when
-# docs/issue-workflows/<issue>/reviews/summary.md carries green frontmatter:
+# issue-workflows/<issue>/reviews/summary.md (run_dir.sh) carries green frontmatter:
 # status: green, blocking_unresolved: 0, reviewed_head matching the current
 # HEAD. Exits 1 otherwise, with the reason on stderr — no LLM judgement.
 
 issue_number="${1:?issue number is required}"
-issue_dir="docs/issue-workflows/$issue_number"
+issue_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/v2/run_dir.sh" "$issue_number")"
 summary="$issue_dir/reviews/summary.md"
 
 fail() { printf 'Review gate: %s\n' "$*" >&2; exit 1; }

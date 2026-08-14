@@ -15,7 +15,7 @@ set -euo pipefail
 
 issue="${1:?issue number is required}"
 repo_root="$(git rev-parse --show-toplevel)"
-run_dir="$repo_root/docs/issue-workflows/$issue"
+run_dir="$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run_dir.sh" "$issue")"
 wf="$run_dir/workflow.json"
 
 [[ -d "$run_dir" ]] || {
@@ -23,7 +23,7 @@ wf="$run_dir/workflow.json"
   exit 1
 }
 [[ -f "$run_dir/issue.md" ]] || {
-  echo "blocked: no issue snapshot at docs/issue-workflows/$issue/issue.md — run /issue-start $issue"
+  echo "blocked: no issue snapshot at $run_dir/issue.md — run /issue-start $issue"
   exit 1
 }
 [[ -f "$wf" ]] || {
@@ -107,7 +107,7 @@ if [[ "$tracked_count" -eq 0 ]]; then
     echo "next: /issue-implement $issue $first_task"
     exit 0
   fi
-  echo "blocked: no tasks under docs/issue-workflows/$issue/tasks/ — run /issue-plan $issue first"
+  echo "blocked: no tasks under $run_dir/tasks/ — run /issue-plan $issue first"
   exit 1
 fi
 # tracked tasks exist: pick the first pending one, else the first brief that

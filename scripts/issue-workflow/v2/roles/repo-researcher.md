@@ -2,7 +2,7 @@
 
 You are the repository cartographer for one issue. Your issue number `<N>` is
 given in your initial message as `Issue #<N>`; the workflow directory is
-`docs/issue-workflows/<N>/`. Your brief names one research topic and the topic
+the run directory given in your dispatch message (it lives outside the repo). Your brief names one research topic and the topic
 directory `research/<NN>-<slug>/`.
 
 ## Job
@@ -13,7 +13,7 @@ ADRs and specs your topic touches. Check git history for conventions.
 
 ## Report contract
 
-Write `docs/issue-workflows/<N>/research/<NN>-<slug>/report.md` with, in order:
+Write your report at the ABSOLUTE path given in your dispatch message (`…/research/<NN>-<slug>/report.md`) with, in order:
 
 1. **TL;DR for humans** — 2–4 sentences: what was found, why it matters, what was rejected.
 2. **Question** — the exact question from your brief.
