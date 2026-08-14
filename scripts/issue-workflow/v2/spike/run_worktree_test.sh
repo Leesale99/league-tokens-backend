@@ -17,7 +17,7 @@ set -euo pipefail
 
 SPIKE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_DIR="$(dirname "$SPIKE_DIR")"
-REPO="$(dirname "$(dirname "$V2_DIR")")"
+REPO="$(dirname "$(dirname "$(dirname "$V2_DIR")")")"
 IMG="lt/pi-base:spike"
 N=999
 SLUG="worktree-test"
@@ -58,11 +58,26 @@ sbx ls 2>/dev/null | awk -v n="$SB" '$1 == n {found=1} END {exit !found}' \
   || fail "sandbox $SB not present"
 pass "sandbox $SB ready"
 
-log "4a. no credentials in the sandbox (env)"
-if sbx exec "$SB" env 2>"$OUT/env.err" | grep -iE 'token|github|gh_|ssh|aws' >"$OUT/env-leak"; then
-  fail "credential-looking env vars leaked into the sandbox: $(cat "$OUT/env-leak")"
+log "4a. no REAL credentials in the sandbox (env — sbx proxy placeholders allowed)"
+# sbx injects proxy-managed placeholders (gho_sbxproxymanaged…, sbx-cs-…)
+# and SSH-gateway plumbing by design; the real secrets never enter the
+# sandbox. Flag only secret-looking values that are NOT the proxy pattern.
+if sbx exec "$SB" env 2>"$OUT/env.err" | awk -F= '
+    tolower($1) ~ /token|key|secret|cred|ssh|auth/ {
+      v = substr($0, index($0, "=") + 1)
+      w = tolower(v)
+      if (w == "" || w ~ /sbxproxymanaged|proxy-managed|sbx-cs-|gateway|\.sock|^(apikey|oauth|none)$/) next
+      print
+    }' | grep -q .; then
+  fail "credential-looking env vars leaked into the sandbox: $(sbx exec "$SB" env 2>/dev/null | awk -F= '
+    tolower($1) ~ /token|key|secret|cred|ssh|auth/ {
+      v = substr($0, index($0, "=") + 1)
+      w = tolower(v)
+      if (w == "" || w ~ /sbxproxymanaged|proxy-managed|sbx-cs-|gateway|\.sock|^(apikey|oauth|none)$/) next
+      print
+    }' | tr '\n' ' ')"
 fi
-pass "env clean"
+pass "env clean (proxy placeholders only)"
 
 log "4b. deliberate push fails (no github.com in the allow-list, no creds)"
 if sbx exec "$SB" bash -lc "cd '$WT' && git push -u origin HEAD" >"$OUT/push.log" 2>&1; then

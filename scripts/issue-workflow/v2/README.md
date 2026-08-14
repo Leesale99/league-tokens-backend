@@ -48,15 +48,22 @@ line (line 1 of the review report) drives the conductor's fix loop
 The verdict (`reported | failed`) checks that path after the run.
 
 - The primary workspace is the run's `research/` dir (or the run dir for
-  the synthesizer) mounted rw at its host path, shadowing the `:ro` repo
-  mount — agents can write only their own artifact, never code.
+  the synthesizer) mounted rw at its host path — agents can write only
+  their own artifact, never code. HOST ACCEPTANCE (Phase 1): sbx/virtiofs
+  rejects a rw workspace nested inside a `:ro` mount (EROFS — the ro
+  parent wins), so the repo root is never mounted as one `:ro` block.
+  Instead every repo top-level directory is mounted `:ro` individually,
+  excluding the run-dir subtree, `.git`, and `.worktrees`; top-level repo
+  FILES (CONTEXT.md, go.mod, …) are mirrored into the run dir's `_repo/`
+  at each dispatch (sbx mounts directories only). Task roles additionally
+  mount `.git` rw and the run dir `:ro`.
 - All roles get the model endpoints (`opencode.ai`, `pi.dev`) — pi needs the
   model. "No network" means *no additional* hosts; egress to anything
   unlisted is blocked (403).
 - Sandboxes are long-lived per issue: `issue-<N>-<role>`, created once,
   reused across dispatches, removed at archive (Task 5.2).
-- `kb-researcher` also gets the repo `:ro` so the role contract file, cwd,
-  and report paths resolve uniformly with the other roles.
+- `kb-researcher` also gets the vault `:ro` (its only extra mount — the
+  repo pieces come from the shared per-entry assembly).
 
 ## Brief contract
 

@@ -43,47 +43,92 @@ vault="${LEAGUE_TOKENS_VAULT:-$HOME/Projects/vaults/league-tokens}"
 
 die() { printf 'dispatch: %s\n' "$*" >&2; exit 1; }
 
-# ---- role spec: primary workspace (the only rw path), extra :ro mounts,
-# ---- network allow-list, and the expected report path. Enforced here; the
-# ---- table lives in scripts/issue-workflow/v2/README.md. Every role gets
-# ---- the model endpoints; role-specific hosts are added below. The primary
-# ---- is a host path mounted rw, shadowing the :ro repo mount, so an agent
-# ---- can write only its own artifact.
+# ---- role spec: primary workspace (rw), network allow-list, expected
+# ---- report path, and per-role extra mounts (`extras`). Enforced here;
+# ---- the table lives in scripts/issue-workflow/v2/README.md. Every role
+# ---- gets the model endpoints; role-specific hosts are added below. The
+# ---- mount assembly (below the case) adds the shared repo mounts — every
+# ---- top-level directory :ro individually (the old design mounted the
+# ---- repo root :ro and relied on the rw primary shadowing it, which
+# ---- sbx/virtiofs does not allow; host acceptance Phase 1: nested
+# ---- rw-in-ro mounts fail with EROFS) — plus a mirror of the top-level
+# ---- repo FILES into the run dir's _repo/ (sbx mounts directories only).
+# ---- Bare paths in `extras` are rw (e.g. .git for task roles).
+extras=()   # per-role mounts beyond the shared per-entry repo assembly
 case "$role" in
   repo-researcher)
-    primary="$research_dir"; extras=("$repo_root:ro")
-    nets=(opencode.ai pi.dev); report="$research_dir/$topic/report.md" ;;
+    primary="$research_dir"; nets=(opencode.ai pi.dev)
+    report="$research_dir/$topic/report.md" ;;
   docs-researcher)
-    primary="$research_dir"; extras=("$repo_root:ro")
-    nets=(opencode.ai pi.dev context7.com); report="$research_dir/$topic/report.md" ;;
+    primary="$research_dir"; nets=(opencode.ai pi.dev context7.com)
+    report="$research_dir/$topic/report.md" ;;
   web-researcher)
-    primary="$research_dir"; extras=("$repo_root:ro")
-    nets=(opencode.ai pi.dev api.openai.com); report="$research_dir/$topic/report.md" ;;
+    primary="$research_dir"; nets=(opencode.ai pi.dev api.openai.com)
+    report="$research_dir/$topic/report.md" ;;
   kb-researcher)
-    primary="$research_dir"; extras=("$repo_root:ro" "$vault:ro")
-    nets=(opencode.ai pi.dev); report="$research_dir/$topic/report.md" ;;
+    primary="$research_dir"; nets=(opencode.ai pi.dev)
+    extras=("$vault:ro")
+    report="$research_dir/$topic/report.md" ;;
   context-synthesizer)
-    primary="$run_dir"; extras=("$repo_root:ro")
-    nets=(opencode.ai pi.dev); report="$run_dir/context.md" ;;
+    primary="$run_dir"; nets=(opencode.ai pi.dev); report="$run_dir/context.md" ;;
   plan-critic)
-    primary="$run_dir"; extras=("$repo_root:ro")
-    nets=(opencode.ai pi.dev); report="$run_dir/plan-critic.md" ;;
+    primary="$run_dir"; nets=(opencode.ai pi.dev); report="$run_dir/plan-critic.md" ;;
   task-implementer)
-    # Phase 3: worktree rw (the only rw mount) + run dir ro (briefs/plan/
-    # context; the .git mount is rw by default — objects + per-worktree
-    # state must be writable for commits; the main checkout is never
-    # mounted). No GitHub credentials: github.com is not in the network
-    # allow-list, so a push fails by policy. proxy.golang.org +
-    # sum.golang.org serve the Go toolchain (repo has no vendor/).
-    primary="$repo_root/.worktrees/issue-$issue"; extras=("$run_dir:ro" "$repo_root/.git")
-    nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org)
+    # Phase 3: worktree rw (primary) + run dir ro (briefs/plan/context) +
+    # <repo>/.git rw — BARE path in extras = rw (no :ro suffix; objects +
+    # per-worktree state must be writable for commits). No GitHub
+    # credentials: github.com is not in the allow-list, so a push fails by
+    # policy. proxy.golang.org + sum.golang.org serve the Go toolchain
+    # (repo has no vendor/).
+    primary="$repo_root/.worktrees/issue-$issue"; nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org)
+    extras=("$run_dir:ro" "$repo_root/.git")
     report="$primary/docs/issue-workflows/$issue/reports/$topic.implement.md" ;;
   task-reviewer)
-    primary="$repo_root/.worktrees/issue-$issue"; extras=("$run_dir:ro" "$repo_root/.git")
-    nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org)
+    primary="$repo_root/.worktrees/issue-$issue"; nets=(opencode.ai pi.dev proxy.golang.org sum.golang.org)
+    extras=("$run_dir:ro" "$repo_root/.git")
     report="$primary/docs/issue-workflows/$issue/reports/$topic.review.md" ;;
   *) die "unknown role '$role' — see the role table in scripts/issue-workflow/v2/README.md" ;;
 esac
+
+# ---- mount assembly. HOST ACCEPTANCE FINDING: sbx/virtiofs does NOT allow
+# ---- a rw workspace nested inside a :ro mount — the ro parent wins and
+# ---- writes fail EROFS (probe matrix on the host, Phase 1 batch). The old
+# ---- design mounted the repo root :ro and relied on the rw primary
+# ---- 'shadowing' it; that shadowing is broken. Instead, every repo
+# ---- top-level entry is mounted :ro INDIVIDUALLY, excluding the run-dir
+# ---- subtree (docs/issue-workflows — the rw primary lives under it), .git
+# ---- (mounted rw for task roles), and .worktrees (the task primary). This
+# ---- keeps the run dir inside the repo (conductor-visible) with zero
+# ---- overlapping mounts.
+repo_mounts=()
+for e in "$repo_root"/* "$repo_root"/.[!.]*; do
+  [[ -d "$e" ]] || continue   # sbx mounts directories only
+  case "$e" in
+    "$repo_root/.git"|"$repo_root/.worktrees") continue ;;
+    "$repo_root/docs")
+      # docs contains the run dir; mount its children individually.
+      for c in "$e"/*; do
+        [[ -d "$c" ]] || continue
+        [[ "$c" == "$repo_root/docs/issue-workflows" ]] && continue
+        repo_mounts+=("$c:ro")
+      done ;;
+    *) repo_mounts+=("$e:ro") ;;
+  esac
+done
+mounts=("$primary")
+mounts+=("${repo_mounts[@]}")
+mounts+=("${extras[@]}")
+
+# Top-level repo FILES cannot be mounted (sbx accepts directories only).
+# Mirror them into the gitignored run dir at every dispatch (refreshed,
+# never committed) so non-worktree roles can still read CONTEXT.md,
+# go.mod, etc. Task roles work inside the worktree checkout instead and
+# do not need this.
+mkdir -p "$run_dir/_repo"
+for f in "$repo_root"/* "$repo_root"/.[!.]*; do
+  [[ -f "$f" ]] || continue
+  cp "$f" "$run_dir/_repo/"
+done
 
 # kb-researcher needs the vault; fail loudly when it is missing.
 if [[ "$role" == "kb-researcher" ]] && [[ ! -d "$vault" ]]; then
@@ -109,7 +154,7 @@ done
 # ---- 2. sandbox: create once per issue+role, then reuse ----
 if ! sbx ls 2>/dev/null | awk -v n="$sandbox" '$1 == n {found=1} END {exit !found}'; then
   mkdir -p "$primary"
-  sbx create --template "$IMG" --name "$sandbox" shell "$primary" "${extras[@]}" >/dev/null
+  sbx create --template "$IMG" --name "$sandbox" shell "${mounts[@]}" >/dev/null
   # create registers the sandbox asynchronously — retry the ls check.
   found=0
   for _ in $(seq 1 10); do
@@ -138,13 +183,16 @@ brief="$(cd "$(dirname "$brief")" && pwd)/$(basename "$brief")"
 # ---- 3. headless dispatch (event log captured on the host) ----
 log="$run_dir/agents/$topic.jsonl"
 mkdir -p "$run_dir/agents" "$run_dir/reports"
+# A stale report from an earlier round must never satisfy the verdict.
+rm -f "$report"
 role_file="$repo_root/scripts/issue-workflow/v2/roles/$role.md"
 [[ -f "$role_file" ]] || die "role contract missing: $role_file"
-message="Issue #$issue — run the $role role contract at $role_file; follow it and the attached brief exactly. Write your report, then stop."
+message="Issue #$issue — run the $role role contract at $role_file; follow it and the attached brief exactly. Report path (absolute, writable): $report. Write your report there, then stop."
 if [[ "$role" == "task-implementer" || "$role" == "task-reviewer" ]]; then
   wd="$primary"; message="$message Worktree (your working dir, cd is done for you): $primary. Read-only workflow files: $run_dir."
 else
   wd="$repo_root"
+  message="$message Repo top-level files (CONTEXT.md, AGENTS.md, go.mod, …) are mirrored at $run_dir/_repo/; directories are mounted read-only at their canonical paths."
 fi
 
 t0="$(date +%s.%N)"
@@ -156,13 +204,16 @@ set -e
 t1="$(date +%s.%N)"
 wall="$(awk "BEGIN{printf \"%.1f\", $t1 - $t0}")"
 
-# ---- verdict: pi exits 0 even on model failure — the log is authoritative
-if grep -q '"stopReason":"error"' "$log"; then
+# ---- verdict: the report is authoritative — a completed deliverable wins
+# ---- even when the run ends with a trailing model error (host acceptance:
+# ---- the reviewer committed + reported green, then the run errored). pi
+# ---- exits 0 even on model failure, so the log is the fallback signal.
+if [[ -f "$report" ]]; then
+  state="reported"; reason="report: ${report#"$run_dir"/}"
+elif grep -q '"stopReason":"error"' "$log"; then
   state="failed"; reason="model error (stopReason:error) — log: agents/$topic.jsonl"
 elif [[ "$code" -ne 0 ]]; then
   state="failed"; reason="pi exit $code — stderr: agents/$topic.jsonl.err"
-elif [[ -f "$report" ]]; then
-  state="reported"; reason="report: ${report#"$run_dir"/}"
 else
   state="failed"; reason="no report at ${report#"$run_dir"/} — log: agents/$topic.jsonl"
 fi
@@ -172,10 +223,19 @@ tokens="$(jq -r 'select(.type=="message_end") | .message.usage.totalTokens // em
 
 # ---- 4. workflow.json: agent state + telemetry (serialized via lock) ----
 [[ -f "$run_dir/workflow.json" ]] || die "workflow.json missing — run research.sh <issue> first"
-# Serialize concurrent agent-state updates via flock (auto-released on exit,
-# including on set -e death — no stale locks).
-exec 9>"$run_dir/.workflow.lock"
-flock 9
+# ---- 4. workflow.json: agent state + telemetry (serialized via a
+# ---- portable mkdir lock — macOS has no flock(1), so the Linux util
+# ---- cannot be used host-side). The lock dir is stolen only when stale
+# ---- (>120 s — the owner died); nothing removes it on exit, so a dead
+# ---- process can never delete a live owner's lock (the Task 1.2 lesson).
+lock="$run_dir/.workflow.lockd"
+while ! mkdir "$lock" 2>/dev/null; do
+  if [[ -d "$lock" ]] && [[ "$(find "$lock" -mmin +2 2>/dev/null)" == "$lock" ]]; then
+    rmdir "$lock" 2>/dev/null || true
+    continue
+  fi
+  sleep 0.2
+done
 tmp="$run_dir/workflow.json.tmp.$$"
 # self-register the agent entry when it does not exist yet (standalone
 # dispatches of phase-level roles such as context-synthesizer).

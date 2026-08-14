@@ -18,7 +18,7 @@ set -euo pipefail
 
 SPIKE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 V2_DIR="$(dirname "$SPIKE_DIR")"
-REPO="$(dirname "$(dirname "$V2_DIR")")"
+REPO="$(dirname "$(dirname "$(dirname "$V2_DIR")")")"
 IMG="lt/pi-base:spike"
 N=999
 SLUG="smoke-implement"
@@ -44,7 +44,11 @@ docker image save "$IMG" -o "$OUT/pi-base.tar"
 sbx template load "$OUT/pi-base.tar" >"$OUT/template-load.log" 2>&1
 
 log "1. issue scaffold (test issue 999: issue.md, plan.md, two briefs)"
-rm -rf "$RUN_DIR" "$WT"
+rm -rf "$RUN_DIR"
+# deregister + remove any prior test worktree (rm -rf alone would leave the
+# git worktree admin entry behind and the next worktree.sh add would fail)
+"$V2_DIR/worktree.sh" "$N" remove >/dev/null 2>&1 || true
+rm -rf "$WT"
 mkdir -p "$RUN_DIR/tasks"
 cat > "$RUN_DIR/issue.md" <<'ISSUE'
 # Smoke issue 999
@@ -146,7 +150,10 @@ log "5. commits stacked on the worktree branch"
 git -C "$WT" log --oneline feat/$N-$SLUG -2
 n_commits="$(git -C "$WT" rev-list --count feat/$N-$SLUG)"
 [[ "$n_commits" -ge 2 ]] || fail "expected >= 2 commits on the branch, got $n_commits"
-git -C "$WT" log --format=%s feat/$N-$SLUG | grep -q "(#$N, task 0" || fail "commits do not reference (#$N, task 0N)"
+# capture first: grep -q would exit on the first match and SIGPIPE the
+# producer, which pipefail would then report as failure.
+msgs="$(git -C "$WT" log --format=%s feat/$N-$SLUG)"
+grep -q "(#$N, task 0" <<<"$msgs" || fail "commits do not reference (#$N, task 0N)"
 
 log "6. workflow.json task states"
 jq -r '.phases.implement.tasks | to_entries[] | "\(.key): \(.value.state) \(.value.commit)"' "$RUN_DIR/workflow.json"

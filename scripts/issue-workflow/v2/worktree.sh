@@ -24,13 +24,13 @@ if [[ "$action" == "remove" ]]; then
   if [[ -d "$wt" ]]; then
     branch="$(git -C "$wt" rev-parse --abbrev-ref HEAD)"
     git worktree remove --force "$wt"
-    printf 'worktree: removed %s\n' "${wt#"$repo_root"/}"
+    printf 'worktree: removed %s\n' "${wt#"$repo_root"/}" >&2
     if [[ "$branch" != "HEAD" ]] && git show-ref --verify --quiet "refs/heads/$branch"; then
       git branch -D "$branch"
-      printf 'worktree: deleted branch %s\n' "$branch"
+      printf 'worktree: deleted branch %s\n' "$branch" >&2
     fi
   else
-    printf 'worktree: nothing to remove (%s)\n' "${wt#"$repo_root"/}"
+    printf 'worktree: nothing to remove (%s)\n' "${wt#"$repo_root"/}" >&2
   fi
   exit 0
 fi
@@ -44,13 +44,13 @@ branch="$prefix/$issue-$slug"
 if [[ -d "$wt" ]]; then
   current="$(git -C "$wt" rev-parse --abbrev-ref HEAD)"
   [[ "$current" == "$branch" ]] || die "worktree exists on '$current' — expected '$branch'; pass the matching slug"
-  printf 'worktree: reusing %s (branch %s)\n' "${wt#"$repo_root"/}" "$branch"
+  printf 'worktree: reusing %s (branch %s)\n' "${wt#"$repo_root"/}" "$branch" >&2
 else
   if git show-ref --verify --quiet "refs/heads/$branch"; then
     git worktree add "$wt" "$branch" >/dev/null
   else
     git worktree add -b "$branch" "$wt" >/dev/null
   fi
-  printf 'worktree: created %s (branch %s)\n' "${wt#"$repo_root"/}" "$branch"
+  printf 'worktree: created %s (branch %s)\n' "${wt#"$repo_root"/}" "$branch" >&2
 fi
 printf '%s\n' "$wt"

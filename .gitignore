@@ -14,3 +14,6 @@
 # Never tracked; a linked worktree's files are invisible to the main
 # checkout, and this keeps them out of `git status` and blanket adds.
 /.worktrees/
+
+# Host acceptance-run output (image tars, logs) — evidence only
+/scripts/issue-workflow/v2/spike/out/
