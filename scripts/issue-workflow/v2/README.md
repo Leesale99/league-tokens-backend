@@ -93,20 +93,40 @@ scripts/issue-workflow/v2/dispatch.sh [--create-only] <issue> <role> <brief-path
     (event log → agents/<topic>.jsonl) → verdict (reported | failed) →
     workflow.json agent state + telemetry → five-line summary.
 
-scripts/issue-workflow/v2/review.sh <issue> [--redispatch]
+scripts/issue-workflow/v2/review.sh <issue> [--re-review|--finalize]
     final review (Phase 4): refuses Track S (parallelism.review: 0 — CI
     is the only gate), guards worktree + implemented tasks, registers the
     five focuses (manifest agents.review) as queued agents, pre-creates
     the sandboxes, dispatches ≤5 in parallel — each reviewer loading its
     golang-* skills via --skill (/opt/cc-skills-golang, baked in the
-    image) — then phase gated + telemetry.review + summary table.
-    Reports: reviews/<focus>.md.
+    image) — then phase gated + per-round telemetry + summary table.
+    Reports: reviews/<focus>.md, frontmatter reviewed_head / status /
+    blocking_unresolved / important_unresolved.
+    --re-review  round N+1: re-dispatches ONLY the red focuses against
+                 the incremental diff reviewed_head..HEAD (fix
+                 verification; whole-diff context stays available).
+    --finalize   aggregates the reports into reviews/summary.md (Task 0.2
+                 gate frontmatter) and marks the phase done.
 ```
 
 `pi -p` exits 0 even on model failure, so the verdict comes from the JSONL:
 `"stopReason":"error"` → `failed`, no report at the role's report path →
 `failed`. Phase-level dispatches (e.g. the synthesizer) take a brief at the
 run root (`synthesis-brief.md`) instead of a research topic dir.
+
+## review.sh modes
+
+Round 1 (`review.sh <issue>`) dispatches all five focuses. `--re-review`
+re-dispatches only the focuses whose last report is red, against the
+incremental diff `reviewed_head..HEAD` — fix verification with the whole
+diff kept available — and only those consumes tokens (per-round
+snapshot: `.telemetry.review.rounds[]` carries `dispatched`, per-agent
+`tokens`/`wall_seconds`, and the recorded `reviewed_head` per focus).
+`--finalize` requires every report green, writes `reviews/summary.md`
+(status / blocking_unresolved / reviewed_head frontmatter — the Task 0.2
+gate read by `check_review_gate.sh`), and marks the phase done. Green
+focuses from earlier rounds keep their verdict; the summary's
+`reviewed_head` is the worktree HEAD at finalize time.
 
 ## research.sh modes
 

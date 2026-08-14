@@ -128,7 +128,7 @@ for brief in "${briefs[@]}"; do
   bash "$v2/dispatch.sh" "$issue" "$role" "$brief" &
   pids+=("$!")
 done
-for p in "${pids[@]}"; do wait "$p" || true; done
+for p in ${pids[@]+"${pids[@]}"}; do wait "$p" || true; done
 
 # ---- 5. finalize: phase → gated, phase telemetry totals (single writer)
 jq '.phases.research.state = "gated" |

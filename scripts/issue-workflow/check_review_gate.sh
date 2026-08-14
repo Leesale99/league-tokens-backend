@@ -35,9 +35,15 @@ reviewed_head="$(printf '%s\n' "$meta" | sed -n 's/^reviewed_head:[[:space:]]*//
 [[ "$reviewed_head" =~ ^[0-9a-f]{7,40}$ ]] \
   || fail "$summary frontmatter reviewed_head is '${reviewed_head:-missing}', expected a commit sha."
 
-head_sha="$(git rev-parse HEAD)"
+# The reviewed branch is the worktree's feature branch — compare against ITS
+# head, not the caller's cwd (the main checkout sits on main; B4, found by the
+# round-3 correctness reviewer: the gate could never pass from main).
+repo_root="$(git rev-parse --show-toplevel)"
+wt="$repo_root/.worktrees/issue-$issue_number"
+[[ -f "$wt/.git" ]] || fail "worktree missing at $wt — the reviewed branch lives there"
+head_sha="$(git -C "$wt" rev-parse HEAD)"
 if [[ "$head_sha" != "$reviewed_head"* ]]; then
-  fail "$summary was reviewed at $reviewed_head but HEAD is $head_sha — re-review the new commits first."
+  fail "$summary was reviewed at $reviewed_head but the worktree HEAD is $head_sha — re-review the new commits first."
 fi
 
 printf 'Review gate green: %s (status: %s, blocking_unresolved: %s, reviewed_head: %s).\n' \

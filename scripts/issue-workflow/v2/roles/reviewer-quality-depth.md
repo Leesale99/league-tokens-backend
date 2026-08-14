@@ -10,9 +10,21 @@ Read all Markdown workflow files in the run directory from your dispatch message
 the FEATURE BRANCH CHECKOUT at the read-only worktree path in your dispatch message
 (never the main checkout): `git -C <worktree> diff origin/main...HEAD`.
 
-Line 1 of your report must be the frontmatter line `reviewed_head: <sha>` with the
-sha you reviewed (`git -C <worktree> rev-parse HEAD`) — it is machine-read for
-incremental re-review.
+Start your report with a frontmatter block (machine-read for the review gate):
+```
+---
+reviewed_head: <sha>              # `git -C <worktree> rev-parse HEAD` at review time
+status: green | red               # red = at least one blocking finding
+blocking_unresolved: <n>          # count of open blocking findings
+important_unresolved: <n>         # count of open important findings
+---
+```
+
+In a RE-REVIEW round your brief names the previous round's `reviewed_head` and
+your previous report: review the INCREMENTAL diff `<previous>..HEAD` (fix
+verification — every blocking/important finding from your previous report must
+be marked resolved or still-open) and flag regressions; the full
+`git -C <worktree> diff origin/main...HEAD` remains available for context.
 
 
 Focus on test coverage and quality, performance, observability, operability,

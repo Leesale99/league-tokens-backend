@@ -125,9 +125,12 @@ esac
 # ---- worktree checkout (primary, rw), which contains every tracked file.
 mounts=("$primary")
 if [[ "$role" == "task-implementer" || "$role" == "task-reviewer" ]]; then
-  mounts+=("${extras[@]}")
+  # NOTE: ${arr[@]+"${arr[@]}"} — host bash 3.2 treats an EMPTY array
+  # expansion as unbound under set -u (Linux bash 5.x tolerates it, which
+  # is why the sandbox dry-runs never caught it).
+  mounts+=(${extras[@]+"${extras[@]}"})
 else
-  mounts+=("$repo_root:ro" "${extras[@]}")
+  mounts+=("$repo_root:ro" ${extras[@]+"${extras[@]}"})
 fi
 
 # kb-researcher needs the vault; fail loudly when it is missing.
@@ -189,7 +192,17 @@ brief="$(cd "$(dirname "$brief")" && pwd)/$(basename "$brief")"
 # ---- 3. headless dispatch (event log captured on the host) ----
 log="$run_dir/agents/$topic.jsonl"
 mkdir -p "$run_dir/agents" "$run_dir/reports" "$run_dir/reviews"
-# A stale report from an earlier round must never satisfy the verdict.
+# A stale report from an earlier round must never satisfy the verdict —
+# but re-review rounds NEED the previous report (fix verification), so
+# archive it first (host acceptance, Phase 4: the requirements reviewer
+# found the previous report deleted with no copy anywhere — ENOENT).
+# Archive name: reviews/archive/<topic>.r<n>.md with n = the round the
+# report belongs to (the workflow round at dispatch time minus one).
+if [[ -f "$report" ]]; then
+  mkdir -p "$run_dir/reviews/archive"
+  prev_round="$(jq -r '.phases.review.round // 1' "$run_dir/workflow.json" 2>/dev/null || echo 1)"
+  cp "$report" "$run_dir/reviews/archive/$topic.r$((prev_round - 1)).md" 2>/dev/null || true
+fi
 rm -f "$report"
 role_file="$repo_root/scripts/issue-workflow/v2/roles/$role.md"
 [[ -f "$role_file" ]] || die "role contract missing: $role_file"
@@ -208,12 +221,25 @@ fi
 # ---- image at /opt/cc-skills-golang — parity with review.yml's --skill
 # ---- loading; deterministic, no auto-discovery dependency).
 skill_args=()
-for s in "${skills[@]}"; do skill_args+=(--skill "/opt/cc-skills-golang/skills/$s"); done
+for s in ${skills[@]+"${skills[@]}"}; do skill_args+=(--skill "/opt/cc-skills-golang/skills/$s"); done
+
+# ---- mount warm-up. sbx auto-starts stopped sandboxes on exec, and the
+# ---- first exec after a start can race the virtiofs mount re-establishment
+# ---- (host acceptance, Phase 4: pi could not open the brief on the first
+# ---- dispatch after the run dir was recreated — 'Error: File not found',
+# ---- 1 s wall, while later dispatches saw the same path fine). Probe the
+# ---- very file pi must read and retry until it is visible.
+for _ in $(seq 1 10); do
+  if sbx exec "$sandbox" test -f "$brief" >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+sbx exec "$sandbox" test -f "$brief" >/dev/null 2>&1 \
+  || die "brief not visible inside sandbox $sandbox after warm-up: $brief"
 
 t0="$(date +%s.%N)"
 set +e
 sbx exec -w "$wd" "$sandbox" pi -p "@$brief" "$message" --mode json \
-  --provider "$PROVIDER" --model "$MODEL" "${skill_args[@]}" >"$log" 2>"$log.err"
+  --provider "$PROVIDER" --model "$MODEL" ${skill_args[@]+"${skill_args[@]}"} >"$log" 2>"$log.err"
 code=$?
 set -e
 t1="$(date +%s.%N)"
@@ -234,7 +260,7 @@ else
 fi
 
 tokens="$(jq -r 'select(.type=="message_end") | .message.usage.totalTokens // empty' "$log" 2>/dev/null \
-  | awk '{s += $1} END {print s + 0}')"
+  | awk '{s += $1} END {print s + 0}' || echo 0)"   # I1: truncated log -> jq fails -> pipeline must not kill the state write
 
 # ---- 4. workflow.json: agent state + telemetry (serialized via lock) ----
 [[ -f "$run_dir/workflow.json" ]] || die "workflow.json missing — run /issue-start <issue> first"
@@ -250,9 +276,18 @@ lock="$run_dir/.workflow.lockd"
 # measured on the Phase 4 review pool).
 acquire_lock() {
   while ! mkdir "$lock" 2>/dev/null; do
-    if [[ -d "$lock" ]] && [[ "$(find "$lock" -mmin +2 2>/dev/null)" == "$lock" ]]; then
-      rm -rf "$lock" 2>/dev/null || true   # stale owner (dead) — steal
-      continue
+    # stale-steal (reviewer findings B3 + I2): the owner file lives INSIDE
+    # the lock dir, so find prints two lines (dir + owner) and the exact
+    # match never fires — head -1 restores the match (B3). Only steal when
+    # the owner PID is actually DEAD (kill -0), so a live-but-slow holder
+    # never loses its lock to a second writer (I2); a lock without an owner
+    # file (killed between mkdir and the echo) is stolen by age alone.
+    if [[ -d "$lock" ]] && [[ "$(find "$lock" -mmin +2 2>/dev/null | head -1)" == "$lock" ]]; then
+      owner="$(cat "$lock/owner" 2>/dev/null || true)"
+      if [[ ! "$owner" =~ ^[0-9]+$ ]] || ! kill -0 "$owner" 2>/dev/null; then
+        rm -rf "$lock" 2>/dev/null || true   # dead owner — steal
+        continue
+      fi
     fi
     sleep 0.2
   done
@@ -283,6 +318,6 @@ release_lock   # explicit; the EXIT trap is the safety net
 printf 'dispatch:  issue #%s · %s · %s\n' "$issue" "$role" "$topic"
 printf 'sandbox:   %s\n' "$sandbox"
 printf 'result:    %s · %s s · %s tokens\n' "$state" "$wall" "$tokens"
-printf 'log:       docs/issue-workflows/%s/agents/%s.jsonl\n' "$issue" "$topic"
+printf 'log:       %s\n' "$log"
 printf 'next:      /issue-research %s\n' "$issue"
 if [[ "$state" == "failed" ]]; then printf 'reason:    %s\n' "$reason"; fi
