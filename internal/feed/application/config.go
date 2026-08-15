@@ -14,6 +14,9 @@ import (
 // and the insecure-http dev opt-in. ProviderAPIKey is injected separately by
 // infra/config.Load (ADR-0012).
 type Config struct {
+	// ProviderURL is the feed provider endpoint; the provider_api_key secret
+	// is sent to this host. Required and non-empty; https unless the
+	// insecure-http dev opt-in is set.
 	ProviderURL string `env:"FEED_PROVIDER_URL,required,notEmpty"`
 	// AllowInsecureHTTP opts into plain http:// provider URLs for local
 	// development against a mock provider. Defaults to false: the provider API
@@ -45,10 +48,10 @@ func ParseConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-// Validate checks the env-driven fields and the injected secret. Provider URL
-// shape checks live in internal/infra/providerurl (shared with schedule);
-// whitespace normalization happens once in ParseConfig, so Validate stays a
-// pure check.
+// Validate checks the env-driven fields and the injected secret without
+// mutating the receiver. Provider URL shape checks live in
+// internal/infra/providerurl (shared with schedule); whitespace normalization
+// happens once in ParseConfig.
 func (c *Config) Validate() error {
 	var errs []string
 	if msg := providerurl.Validate(
