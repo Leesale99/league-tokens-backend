@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -195,6 +197,24 @@ func TestLoad_InvalidHTTPAddr(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Fatal("Load() expected error for invalid HTTP_LISTEN_ADDR, got nil")
+	}
+}
+
+func TestMustLoad_ExitsOnInvalidConfig(t *testing.T) {
+	if os.Getenv("MUSTLOAD_HELPER") == "1" {
+		// Child process: force a config failure (secrets dir empty) and expect
+		// MustLoad to terminate the process with exit code 1.
+		secretsDir = t.TempDir()
+		MustLoad()
+		t.Fatal("MustLoad did not exit on invalid config")
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestMustLoad_ExitsOnInvalidConfig$")
+	cmd.Env = append(os.Environ(), "MUSTLOAD_HELPER=1")
+	out, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatalf("MustLoad with invalid config: got err=%v, want exit code 1; output:\n%s", err, out)
 	}
 }
 
