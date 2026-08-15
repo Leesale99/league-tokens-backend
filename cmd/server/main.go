@@ -9,17 +9,21 @@ import (
 
 func main() {
 	// Boot fallback: text handler on stdout at INFO (ADR-0006), so Load()'s
-	// warnings and any fatal config error always surface before config is
-	// parsed, on the same format as the rest of the app.
-	slog.SetDefault(slog.New(newTextHandler(slog.LevelInfo)))
+	// warnings, any fatal config error, and the boot confirmation always
+	// surface before config is parsed, on the same format as the rest of the
+	// app.
+	boot := slog.New(newTextHandler(slog.LevelInfo))
+	slog.SetDefault(boot)
 
 	cfg := config.MustLoad()
 	level := cfg.Telemetry.LogLevelSlog()
 	slog.SetDefault(slog.New(newTextHandler(level)))
 
-	// Note: suppressed when LOG_LEVEL=warn/error — expected filtering; the
-	// log_level attribute keeps the line self-describing when it appears.
-	slog.Info("config loaded",
+	// Always-on boot confirmation (via the INFO boot handler): a healthy start
+	// must be observable even when LOG_LEVEL=warn/error would filter the
+	// configured handler. log_level reports the effective level for the rest
+	// of the process.
+	boot.Info("config loaded",
 		"service", cfg.Telemetry.ServiceName,
 		"log_level", level.String())
 }

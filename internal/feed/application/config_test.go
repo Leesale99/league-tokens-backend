@@ -255,6 +255,27 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
+func TestParseConfigValidateRoundTrip(t *testing.T) {
+	// The exact path composer.Load takes: env -> ParseConfig (normalizes
+	// whitespace) -> inject the secret -> Validate must pass. Guards against a
+	// change to trimming or the padding rejection silently breaking boot.
+	t.Setenv("FEED_PROVIDER_URL", "  https://feed.example.com/v2\n")
+	t.Setenv("FEED_POLL_INTERVAL", "1m")
+	unsetEnv(t, "FEED_ALLOW_INSECURE_HTTP")
+
+	cfg, err := ParseConfig()
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+	if cfg.ProviderURL != "https://feed.example.com/v2" {
+		t.Errorf("ProviderURL = %q, want normalized", cfg.ProviderURL)
+	}
+	cfg.ProviderAPIKey = "key-123" // as infra/config.Load does
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("ParseConfig output should pass Validate after secret injection: %v", err)
+	}
+}
+
 func TestConfigValidateMultipleErrors(t *testing.T) {
 	// All three checks fire at once (empty URL, missing key, zero interval) so
 	// the strings.Join accumulation branch is exercised, not just single-error
