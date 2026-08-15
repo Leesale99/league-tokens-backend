@@ -8,16 +8,20 @@ import (
 )
 
 func main() {
+	// Boot logging deliberately uses Go's default slog handler (stderr, INFO
+	// level): MustLoad runs first, so the cleartext-opt-in warning and any
+	// fatal config error are always visible regardless of LOG_LEVEL. The
+	// config-driven handler (stdout, configured level, ADR-0006) applies once
+	// config is known. OTLP wiring is issue #42; JSON handler is issue #41.
 	cfg := config.MustLoad()
+	level := cfg.Telemetry.LogLevelSlog()
 
-	// Structured slog per ADR-0006: text handler for dev, logs to stdout.
-	// The JSON handler and correlation fields land with issue #41; the OTLP
-	// exporter is issue #42.
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: cfg.Telemetry.LogLevelSlog(),
+		Level: level,
 	})))
-	// Self-describing even when LOG_LEVEL=warn/error would suppress an Info line.
+	// Note: suppressed when LOG_LEVEL=warn/error — that filtering is expected;
+	// the log_level attribute keeps the line self-describing when it appears.
 	slog.Info("starting with valid config",
 		"service", cfg.Telemetry.ServiceName,
-		"log_level", cfg.Telemetry.LogLevelSlog().String())
+		"log_level", level.String())
 }

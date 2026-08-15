@@ -24,7 +24,9 @@ type Config struct {
 	// ParseConfig leaves it empty and Validate only passes once
 	// infra/config.Load has injected the secret.
 	ProviderAPIKey string
-	SyncInterval   time.Duration `env:"SCHEDULE_SYNC_INTERVAL" envDefault:"5m"`
+	// SyncInterval is how often the scheduler adapter syncs the schedule.
+	// Defaults to 5m; Validate rejects values below 1s.
+	SyncInterval time.Duration `env:"SCHEDULE_SYNC_INTERVAL" envDefault:"5m"`
 }
 
 // ParseConfig parses the env-driven fields of Config. Secret fields
@@ -47,7 +49,12 @@ func ParseConfig() (*Config, error) {
 // shape checks live in internal/infra/providerurl (shared with feed).
 func (c *Config) Validate() error {
 	var errs []string
-	if msg := providerurl.Validate(c.ProviderURL, "SCHEDULE_PROVIDER_URL", "SCHEDULE_ALLOW_INSECURE_HTTP", c.AllowInsecureHTTP); msg != "" {
+	if msg := providerurl.Validate(
+		c.ProviderURL,
+		"SCHEDULE_PROVIDER_URL",
+		"SCHEDULE_ALLOW_INSECURE_HTTP",
+		c.AllowInsecureHTTP,
+	); msg != "" {
 		errs = append(errs, msg)
 	}
 	if c.ProviderAPIKey == "" {

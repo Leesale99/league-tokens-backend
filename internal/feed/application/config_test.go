@@ -337,6 +337,16 @@ func TestParseConfig(t *testing.T) {
 			wantPoll: time.Minute,
 		},
 		{
+			name: "whitespace-only provider URL normalized to empty",
+			setup: func(t *testing.T) {
+				t.Setenv("FEED_PROVIDER_URL", "   ")
+				t.Setenv("FEED_POLL_INTERVAL", "1m")
+				unsetEnv(t, "FEED_ALLOW_INSECURE_HTTP")
+			},
+			wantURL:  "",
+			wantPoll: time.Minute,
+		},
+		{
 			name: "valid",
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "https://feed.example.com/v2")

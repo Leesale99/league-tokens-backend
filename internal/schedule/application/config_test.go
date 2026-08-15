@@ -337,6 +337,16 @@ func TestParseConfig(t *testing.T) {
 			wantSync: 5 * time.Minute,
 		},
 		{
+			name: "whitespace-only provider URL normalized to empty",
+			setup: func(t *testing.T) {
+				t.Setenv("SCHEDULE_PROVIDER_URL", "   ")
+				t.Setenv("SCHEDULE_SYNC_INTERVAL", "5m")
+				unsetEnv(t, "SCHEDULE_ALLOW_INSECURE_HTTP")
+			},
+			wantURL:  "",
+			wantSync: 5 * time.Minute,
+		},
+		{
 			name: "valid",
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")

@@ -24,7 +24,9 @@ type Config struct {
 	// ParseConfig leaves it empty and Validate only passes once
 	// infra/config.Load has injected the secret.
 	ProviderAPIKey string
-	PollInterval   time.Duration `env:"FEED_POLL_INTERVAL" envDefault:"1m"`
+	// PollInterval is how often the feed adapter polls the provider. Defaults
+	// to 1m; Validate rejects values below 1s.
+	PollInterval time.Duration `env:"FEED_POLL_INTERVAL" envDefault:"1m"`
 }
 
 // ParseConfig parses the env-driven fields of Config. Secret fields
@@ -47,7 +49,12 @@ func ParseConfig() (*Config, error) {
 // shape checks live in internal/infra/providerurl (shared with schedule).
 func (c *Config) Validate() error {
 	var errs []string
-	if msg := providerurl.Validate(c.ProviderURL, "FEED_PROVIDER_URL", "FEED_ALLOW_INSECURE_HTTP", c.AllowInsecureHTTP); msg != "" {
+	if msg := providerurl.Validate(
+		c.ProviderURL,
+		"FEED_PROVIDER_URL",
+		"FEED_ALLOW_INSECURE_HTTP",
+		c.AllowInsecureHTTP,
+	); msg != "" {
 		errs = append(errs, msg)
 	}
 	if c.ProviderAPIKey == "" {
