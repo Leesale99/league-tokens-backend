@@ -9,10 +9,11 @@ import (
 
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
-		name      string
-		cfg       Config
-		wantErr   bool
-		errSubstr string
+		name            string
+		cfg             Config
+		wantErr         bool
+		errSubstr       string
+		forbiddenSubstr string
 	}{
 		{
 			name: "valid config",
@@ -140,7 +141,7 @@ func TestConfigValidate(t *testing.T) {
 				SyncInterval:   0,
 			},
 			wantErr:   true,
-			errSubstr: "SCHEDULE_SYNC_INTERVAL must be positive",
+			errSubstr: "SCHEDULE_SYNC_INTERVAL must be at least 1s",
 		},
 		{
 			name: "negative sync interval",
@@ -150,7 +151,48 @@ func TestConfigValidate(t *testing.T) {
 				SyncInterval:   -1 * time.Minute,
 			},
 			wantErr:   true,
-			errSubstr: "SCHEDULE_SYNC_INTERVAL must be positive",
+			errSubstr: "SCHEDULE_SYNC_INTERVAL must be at least 1s",
+		},
+		{
+			name: "tiny sync interval rejected",
+			cfg: Config{
+				ProviderURL:    "https://api.example.com/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   1 * time.Millisecond,
+			},
+			wantErr:   true,
+			errSubstr: "SCHEDULE_SYNC_INTERVAL must be at least 1s",
+		},
+		{
+			name: "out-of-range port rejected",
+			cfg: Config{
+				ProviderURL:    "https://api.example.com:99999/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL has an invalid port",
+		},
+		{
+			name: "empty port rejected",
+			cfg: Config{
+				ProviderURL:    "https://api.example.com:/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL has an invalid port",
+		},
+		{
+			name: "parse error does not leak embedded credentials",
+			cfg: Config{
+				ProviderURL:    "https://user:pass@api.example.com/%zz",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr:         true,
+			errSubstr:       "SCHEDULE_PROVIDER_URL is invalid",
+			forbiddenSubstr: "pass",
 		},
 	}
 	for _, tt := range tests {
@@ -161,6 +203,9 @@ func TestConfigValidate(t *testing.T) {
 			}
 			if tt.wantErr && tt.errSubstr != "" && err != nil && !strings.Contains(err.Error(), tt.errSubstr) {
 				t.Errorf("Validate() error = %q, want substring %q", err, tt.errSubstr)
+			}
+			if tt.forbiddenSubstr != "" && err != nil && strings.Contains(err.Error(), tt.forbiddenSubstr) {
+				t.Errorf("Validate() error leaks %q: %q", tt.forbiddenSubstr, err)
 			}
 		})
 	}

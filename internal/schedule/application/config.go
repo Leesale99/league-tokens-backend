@@ -1,8 +1,10 @@
 package application
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +25,33 @@ type Config struct {
 	SyncInterval   time.Duration `env:"SCHEDULE_SYNC_INTERVAL" envDefault:"5m"`
 }
 
+// parseErrorReason returns the underlying reason of a url.Parse failure,
+// omitting the raw URL that url.Error embeds (which may carry userinfo).
+func parseErrorReason(err error) string {
+	var ue *url.Error
+	if errors.As(err, &ue) && ue.Err != nil {
+		return ue.Err.Error()
+	}
+	return err.Error()
+}
+
+func validPort(p string) bool {
+	n, err := strconv.Atoi(p)
+	return err == nil && n >= 1 && n <= 65535
+}
+
+// invalidURLPort reports whether u carries a malformed or out-of-range port,
+// e.g. "https://host:99999/" or "https://host:/".
+func invalidURLPort(u *url.URL) bool {
+	if strings.HasSuffix(u.Host, ":") {
+		return true
+	}
+	if p := u.Port(); p != "" && !validPort(p) {
+		return true
+	}
+	return false
+}
+
 // ParseConfig parses the env-driven fields of Config. Secret fields
 // (ProviderAPIKey) are not env vars and remain empty here; they are injected by
 // infra/config.Load before Validate runs. A Config produced by ParseConfig alone
@@ -37,28 +66,37 @@ func ParseConfig() (*Config, error) {
 
 // Validate checks the env-driven fields and the injected secret. It rejects
 // provider URLs that are missing, malformed, without a host, with embedded
-// credentials, or non-http(s); plain http is rejected unless AllowInsecureHTTP
-// opts in explicitly.
+// credentials, with an invalid port, or non-http(s); plain http is rejected
+// unless AllowInsecureHTTP opts in explicitly.
 func (c *Config) Validate() error {
 	var errs []string
 	if c.ProviderURL == "" {
 		errs = append(errs, "SCHEDULE_PROVIDER_URL is required")
-	} else if u, err := url.Parse(c.ProviderURL); err != nil {
-		errs = append(errs, fmt.Sprintf("SCHEDULE_PROVIDER_URL is invalid: %v", err))
-	} else if u.Host == "" || u.Hostname() == "" {
-		errs = append(errs, "SCHEDULE_PROVIDER_URL must include a host")
-	} else if u.User != nil {
-		errs = append(errs, "SCHEDULE_PROVIDER_URL must not contain embedded credentials (user:pass@)")
-	} else if s := strings.ToLower(u.Scheme); s == "http" && !c.AllowInsecureHTTP {
-		errs = append(errs, "SCHEDULE_PROVIDER_URL must be https; set SCHEDULE_ALLOW_INSECURE_HTTP=true for local http dev")
-	} else if s != "https" && s != "http" {
-		errs = append(errs, "SCHEDULE_PROVIDER_URL must be http(s)")
+	} else {
+		u, err := url.Parse(c.ProviderURL)
+		switch {
+		case err != nil:
+			// url.Parse errors embed the raw URL (url.Error.URL), which may
+			// carry userinfo; surface only the reason so credentials never
+			// reach the logs (ADR-0007).
+			errs = append(errs, fmt.Sprintf("SCHEDULE_PROVIDER_URL is invalid: %s", parseErrorReason(err)))
+		case u.Host == "" || u.Hostname() == "":
+			errs = append(errs, "SCHEDULE_PROVIDER_URL must include a host")
+		case u.User != nil:
+			errs = append(errs, "SCHEDULE_PROVIDER_URL must not contain embedded credentials (user:pass@)")
+		case invalidURLPort(u):
+			errs = append(errs, "SCHEDULE_PROVIDER_URL has an invalid port")
+		case strings.EqualFold(u.Scheme, "http") && !c.AllowInsecureHTTP:
+			errs = append(errs, "SCHEDULE_PROVIDER_URL must be https; set SCHEDULE_ALLOW_INSECURE_HTTP=true for local http dev")
+		case !strings.EqualFold(u.Scheme, "https") && !strings.EqualFold(u.Scheme, "http"):
+			errs = append(errs, "SCHEDULE_PROVIDER_URL must be http(s)")
+		}
 	}
 	if c.ProviderAPIKey == "" {
 		errs = append(errs, "provider_api_key secret is required (injected by infra/config.Load from /run/secrets/provider_api_key)")
 	}
-	if c.SyncInterval <= 0 {
-		errs = append(errs, "SCHEDULE_SYNC_INTERVAL must be positive")
+	if c.SyncInterval < time.Second {
+		errs = append(errs, "SCHEDULE_SYNC_INTERVAL must be at least 1s")
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("schedule config: %s", strings.Join(errs, "; "))
