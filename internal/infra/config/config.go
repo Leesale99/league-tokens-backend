@@ -73,8 +73,8 @@ func parsePostgresConfig() (*PostgresConfig, error) {
 }
 
 type HTTPConfig struct {
-	ListenAddr       string   `env:"HTTP_LISTEN_ADDR" envDefault:":8080"`
-	TrustedProxies   []string `env:"HTTP_TRUSTED_PROXIES" envSeparator:","`
+	ListenAddr     string   `env:"HTTP_LISTEN_ADDR" envDefault:":8080"`
+	TrustedProxies []string `env:"HTTP_TRUSTED_PROXIES" envSeparator:","`
 }
 
 func (c *HTTPConfig) Validate() error {

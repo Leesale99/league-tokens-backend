@@ -1,4 +1,4 @@
-package feed
+package application
 
 import (
 	"os"
@@ -195,6 +195,15 @@ func TestConfigValidate(t *testing.T) {
 			errSubstr: "FEED_PROVIDER_URL must be http(s)",
 		},
 		{
+			name: "whitespace around URL trimmed",
+			cfg: Config{
+				ProviderURL:    "  https://feed.example.com/v2\n",
+				ProviderAPIKey: "key-123",
+				PollInterval:   1 * time.Minute,
+			},
+			wantErr: false,
+		},
+		{
 			name: "parse error does not leak embedded credentials",
 			cfg: Config{
 				ProviderURL:    "https://user:pass@feed.example.com/%zz",
@@ -219,6 +228,25 @@ func TestConfigValidate(t *testing.T) {
 				t.Errorf("Validate() error leaks %q: %q", tt.forbiddenSubstr, err)
 			}
 		})
+	}
+}
+
+func TestConfigValidate_MultipleErrors(t *testing.T) {
+	// All three checks fire at once (empty URL, missing key, zero interval) so
+	// the strings.Join accumulation branch is exercised, not just single-error
+	// cases.
+	err := (&Config{}).Validate()
+	if err == nil {
+		t.Fatal("Validate() = nil, want error")
+	}
+	for _, s := range []string{
+		"FEED_PROVIDER_URL is required",
+		"provider_api_key secret is required",
+		"FEED_POLL_INTERVAL must be at least 1s",
+	} {
+		if !strings.Contains(err.Error(), s) {
+			t.Errorf("Validate() error = %q, want substring %q", err, s)
+		}
 	}
 }
 
@@ -266,6 +294,15 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "https://feed.example.com/v2")
 				t.Setenv("FEED_POLL_INTERVAL", "abc")
+			},
+			wantErr:   true,
+			errSubstr: "parse feed config",
+		},
+		{
+			name: "invalid insecure http flag",
+			setup: func(t *testing.T) {
+				t.Setenv("FEED_PROVIDER_URL", "https://feed.example.com/v2")
+				t.Setenv("FEED_ALLOW_INSECURE_HTTP", "banana")
 			},
 			wantErr:   true,
 			errSubstr: "parse feed config",

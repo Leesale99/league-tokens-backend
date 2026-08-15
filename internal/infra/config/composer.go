@@ -7,11 +7,11 @@ import (
 	"os"
 	"strings"
 
+	feedcfg "github.com/Leesale99/league-tokens-backend/internal/feed/application"
 	gamecfg "github.com/Leesale99/league-tokens-backend/internal/game/application"
 	identitycfg "github.com/Leesale99/league-tokens-backend/internal/identity/application"
 	ledgercfg "github.com/Leesale99/league-tokens-backend/internal/ledger/application"
 	schedulecfg "github.com/Leesale99/league-tokens-backend/internal/schedule/application"
-	feedcfg "github.com/Leesale99/league-tokens-backend/internal/feed"
 )
 
 type ComposerConfig struct {

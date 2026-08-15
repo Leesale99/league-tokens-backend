@@ -195,6 +195,15 @@ func TestConfigValidate(t *testing.T) {
 			errSubstr: "SCHEDULE_PROVIDER_URL must be http(s)",
 		},
 		{
+			name: "whitespace around URL trimmed",
+			cfg: Config{
+				ProviderURL:    "  https://api.example.com/v1\n",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr: false,
+		},
+		{
 			name: "parse error does not leak embedded credentials",
 			cfg: Config{
 				ProviderURL:    "https://user:pass@api.example.com/%zz",
@@ -219,6 +228,25 @@ func TestConfigValidate(t *testing.T) {
 				t.Errorf("Validate() error leaks %q: %q", tt.forbiddenSubstr, err)
 			}
 		})
+	}
+}
+
+func TestConfigValidate_MultipleErrors(t *testing.T) {
+	// All three checks fire at once (empty URL, missing key, zero interval) so
+	// the strings.Join accumulation branch is exercised, not just single-error
+	// cases.
+	err := (&Config{}).Validate()
+	if err == nil {
+		t.Fatal("Validate() = nil, want error")
+	}
+	for _, s := range []string{
+		"SCHEDULE_PROVIDER_URL is required",
+		"provider_api_key secret is required",
+		"SCHEDULE_SYNC_INTERVAL must be at least 1s",
+	} {
+		if !strings.Contains(err.Error(), s) {
+			t.Errorf("Validate() error = %q, want substring %q", err, s)
+		}
 	}
 }
 
@@ -266,6 +294,15 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")
 				t.Setenv("SCHEDULE_SYNC_INTERVAL", "abc")
+			},
+			wantErr:   true,
+			errSubstr: "parse schedule config",
+		},
+		{
+			name: "invalid insecure http flag",
+			setup: func(t *testing.T) {
+				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")
+				t.Setenv("SCHEDULE_ALLOW_INSECURE_HTTP", "banana")
 			},
 			wantErr:   true,
 			errSubstr: "parse schedule config",

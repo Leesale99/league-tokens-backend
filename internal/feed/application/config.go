@@ -10,21 +10,21 @@ import (
 	"github.com/Leesale99/league-tokens-backend/internal/infra/providerurl"
 )
 
-// Config holds schedule-ingestion settings: the provider endpoint, sync
-// cadence, and the insecure-http dev opt-in. ProviderAPIKey is injected
-// separately by infra/config.Load (ADR-0012).
+// Config holds feed-ingestion settings: the provider endpoint, poll cadence,
+// and the insecure-http dev opt-in. ProviderAPIKey is injected separately by
+// infra/config.Load (ADR-0012).
 type Config struct {
-	ProviderURL string `env:"SCHEDULE_PROVIDER_URL,required"`
+	ProviderURL string `env:"FEED_PROVIDER_URL,required"`
 	// AllowInsecureHTTP opts into plain http:// provider URLs for local
 	// development against a mock provider. Defaults to false: the provider API
 	// key is a Docker secret and must never travel in cleartext (ADR-0007).
-	AllowInsecureHTTP bool `env:"SCHEDULE_ALLOW_INSECURE_HTTP" envDefault:"false"`
+	AllowInsecureHTTP bool `env:"FEED_ALLOW_INSECURE_HTTP" envDefault:"false"`
 	// ProviderAPIKey is loaded from the Docker secret "provider_api_key" by
 	// infra/config.Load. It is deliberately not an env var (ADR-0012), so
 	// ParseConfig leaves it empty and Validate only passes once
 	// infra/config.Load has injected the secret.
 	ProviderAPIKey string
-	SyncInterval   time.Duration `env:"SCHEDULE_SYNC_INTERVAL" envDefault:"5m"`
+	PollInterval   time.Duration `env:"FEED_POLL_INTERVAL" envDefault:"1m"`
 }
 
 // ParseConfig parses the env-driven fields of Config. Secret fields
@@ -34,27 +34,27 @@ type Config struct {
 func ParseConfig() (*Config, error) {
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
-		return nil, fmt.Errorf("parse schedule config: %w", err)
+		return nil, fmt.Errorf("parse feed config: %w", err)
 	}
 	return &cfg, nil
 }
 
 // Validate checks the env-driven fields and the injected secret. Provider URL
-// shape checks live in internal/infra/providerurl (shared with feed).
+// shape checks live in internal/infra/providerurl (shared with schedule).
 func (c *Config) Validate() error {
 	var errs []string
-	if msg := providerurl.Validate(c.ProviderURL, "SCHEDULE_PROVIDER_URL", "SCHEDULE_ALLOW_INSECURE_HTTP", c.AllowInsecureHTTP); msg != "" {
+	if msg := providerurl.Validate(c.ProviderURL, "FEED_PROVIDER_URL", "FEED_ALLOW_INSECURE_HTTP", c.AllowInsecureHTTP); msg != "" {
 		errs = append(errs, msg)
 	}
 	if c.ProviderAPIKey == "" {
 		errs = append(errs, "provider_api_key secret is required (injected by "+
 			"infra/config.Load from /run/secrets/provider_api_key)")
 	}
-	if c.SyncInterval < time.Second {
-		errs = append(errs, "SCHEDULE_SYNC_INTERVAL must be at least 1s")
+	if c.PollInterval < time.Second {
+		errs = append(errs, "FEED_POLL_INTERVAL must be at least 1s")
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("schedule config: %s", strings.Join(errs, "; "))
+		return fmt.Errorf("feed config: %s", strings.Join(errs, "; "))
 	}
 	return nil
 }
