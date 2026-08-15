@@ -48,6 +48,9 @@ func ParseConfig() (*Config, error) {
 // Validate checks the env-driven fields and the injected secret. Provider URL
 // shape checks live in internal/infra/providerurl (shared with schedule).
 func (c *Config) Validate() error {
+	// Normalize so the stored value is exactly what was validated, regardless
+	// of whether the config came from ParseConfig or was built directly.
+	c.ProviderURL = strings.TrimSpace(c.ProviderURL)
 	var errs []string
 	if msg := providerurl.Validate(
 		c.ProviderURL,

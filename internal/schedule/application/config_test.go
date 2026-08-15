@@ -250,6 +250,20 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
+func TestConfigValidateNormalizesProviderURL(t *testing.T) {
+	cfg := &Config{
+		ProviderURL:    "  https://api.example.com/v1\n",
+		ProviderAPIKey: "key-123",
+		SyncInterval:   5 * time.Minute,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if want := "https://api.example.com/v1"; cfg.ProviderURL != want {
+		t.Errorf("ProviderURL = %q, want normalized %q", cfg.ProviderURL, want)
+	}
+}
+
 func TestConfigValidateMultipleErrors(t *testing.T) {
 	// All three checks fire at once (empty URL, missing key, zero interval) so
 	// the strings.Join accumulation branch is exercised, not just single-error
