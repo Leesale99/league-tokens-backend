@@ -214,7 +214,7 @@ func TestConfigValidate(t *testing.T) {
 			errSubstr: "SCHEDULE_PROVIDER_URL must be http(s)",
 		},
 		{
-			name: "whitespace around URL trimmed",
+			name: "whitespace-padded URL tolerated",
 			cfg: Config{
 				ProviderURL:    "  https://api.example.com/v1\n",
 				ProviderAPIKey: "key-123",
@@ -304,6 +304,8 @@ func TestParseConfig(t *testing.T) {
 			name: "missing required provider URL",
 			setup: func(t *testing.T) {
 				unsetEnv(t, "SCHEDULE_PROVIDER_URL")
+				unsetEnv(t, "SCHEDULE_SYNC_INTERVAL")
+				unsetEnv(t, "SCHEDULE_ALLOW_INSECURE_HTTP")
 			},
 			wantErr:   true,
 			errSubstr: "SCHEDULE_PROVIDER_URL",
@@ -312,6 +314,8 @@ func TestParseConfig(t *testing.T) {
 			name: "set-but-empty provider URL rejected at parse",
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "")
+				unsetEnv(t, "SCHEDULE_SYNC_INTERVAL")
+				unsetEnv(t, "SCHEDULE_ALLOW_INSECURE_HTTP")
 			},
 			wantErr:   true,
 			errSubstr: "should not be empty",
@@ -321,6 +325,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")
 				t.Setenv("SCHEDULE_SYNC_INTERVAL", "abc")
+				unsetEnv(t, "SCHEDULE_ALLOW_INSECURE_HTTP")
 			},
 			wantErr:   true,
 			errSubstr: "parse schedule config",
@@ -330,6 +335,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")
 				t.Setenv("SCHEDULE_ALLOW_INSECURE_HTTP", "banana")
+				unsetEnv(t, "SCHEDULE_SYNC_INTERVAL")
 			},
 			wantErr:   true,
 			errSubstr: "parse schedule config",

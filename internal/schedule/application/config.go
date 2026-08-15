@@ -50,8 +50,9 @@ func ParseConfig() (*Config, error) {
 
 // Validate checks the env-driven fields and the injected secret without
 // mutating the receiver. Provider URL shape checks live in
-// internal/infra/providerurl (shared with feed); whitespace normalization
-// happens once in ParseConfig.
+// internal/infra/providerurl (shared with feed), which trims a copy of the
+// URL for its checks; the stored value itself is normalized once in
+// ParseConfig.
 func (c *Config) Validate() error {
 	var errs []string
 	if msg := providerurl.Validate(

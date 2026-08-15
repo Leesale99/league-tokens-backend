@@ -214,7 +214,7 @@ func TestConfigValidate(t *testing.T) {
 			errSubstr: "FEED_PROVIDER_URL must be http(s)",
 		},
 		{
-			name: "whitespace around URL trimmed",
+			name: "whitespace-padded URL tolerated",
 			cfg: Config{
 				ProviderURL:    "  https://feed.example.com/v2\n",
 				ProviderAPIKey: "key-123",
@@ -304,6 +304,8 @@ func TestParseConfig(t *testing.T) {
 			name: "missing required provider URL",
 			setup: func(t *testing.T) {
 				unsetEnv(t, "FEED_PROVIDER_URL")
+				unsetEnv(t, "FEED_POLL_INTERVAL")
+				unsetEnv(t, "FEED_ALLOW_INSECURE_HTTP")
 			},
 			wantErr:   true,
 			errSubstr: "FEED_PROVIDER_URL",
@@ -312,6 +314,8 @@ func TestParseConfig(t *testing.T) {
 			name: "set-but-empty provider URL rejected at parse",
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "")
+				unsetEnv(t, "FEED_POLL_INTERVAL")
+				unsetEnv(t, "FEED_ALLOW_INSECURE_HTTP")
 			},
 			wantErr:   true,
 			errSubstr: "should not be empty",
@@ -321,6 +325,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "https://feed.example.com/v2")
 				t.Setenv("FEED_POLL_INTERVAL", "abc")
+				unsetEnv(t, "FEED_ALLOW_INSECURE_HTTP")
 			},
 			wantErr:   true,
 			errSubstr: "parse feed config",
@@ -330,6 +335,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "https://feed.example.com/v2")
 				t.Setenv("FEED_ALLOW_INSECURE_HTTP", "banana")
+				unsetEnv(t, "FEED_POLL_INTERVAL")
 			},
 			wantErr:   true,
 			errSubstr: "parse feed config",
