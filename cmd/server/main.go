@@ -1,13 +1,12 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 
 	"github.com/Leesale99/league-tokens-backend/internal/infra/config"
 )
 
 func main() {
-	cfg := config.MustLoad()
-	_ = cfg
-	log.Println("starting with valid config")
+	config.MustLoad()
+	slog.Info("starting with valid config")
 }

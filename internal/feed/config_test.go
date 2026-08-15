@@ -50,6 +50,15 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "missing host",
+			cfg: Config{
+				ProviderURL:    "https://",
+				ProviderAPIKey: "key-123",
+				PollInterval:   1 * time.Minute,
+			},
+			wantErr: true,
+		},
+		{
 			name: "missing API key",
 			cfg: Config{
 				ProviderURL:    "https://feed.example.com/v2",
@@ -117,7 +126,7 @@ func TestParseConfig(t *testing.T) {
 				unsetEnv(t, "FEED_PROVIDER_URL")
 			},
 			wantErr:   true,
-			errSubstr: "parse feed config",
+			errSubstr: "FEED_PROVIDER_URL",
 		},
 		{
 			name: "invalid poll interval",

@@ -31,12 +31,16 @@ func ParseConfig() (*Config, error) {
 	return &cfg, nil
 }
 
+// Validate checks the env-driven fields and the injected secret. It rejects
+// provider URLs that are missing, malformed, without a host, or non-http(s).
 func (c *Config) Validate() error {
 	var errs []string
 	if c.ProviderURL == "" {
 		errs = append(errs, "FEED_PROVIDER_URL is required")
 	} else if u, err := url.Parse(c.ProviderURL); err != nil {
 		errs = append(errs, fmt.Sprintf("FEED_PROVIDER_URL is invalid: %v", err))
+	} else if u.Host == "" {
+		errs = append(errs, "FEED_PROVIDER_URL must include a host")
 	} else if u.Scheme != "http" && u.Scheme != "https" {
 		errs = append(errs, "FEED_PROVIDER_URL must be http(s)")
 	}

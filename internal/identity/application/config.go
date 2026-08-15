@@ -17,6 +17,9 @@ type Config struct {
 	JWTSigningKeyED25519 string
 }
 
+// ParseConfig parses the env-driven fields of Config. Secrets such as
+// JWTSigningKeyED25519 are injected by infra/config.Load, so a Config produced
+// here alone will not pass Validate.
 func ParseConfig() (*Config, error) {
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
@@ -25,6 +28,9 @@ func ParseConfig() (*Config, error) {
 	return &cfg, nil
 }
 
+// Validate checks the env-driven fields and the injected secret. A Config must
+// have JWTSigningKeyED25519 injected by infra/config.Load before Validate can
+// pass.
 func (c *Config) Validate() error {
 	var errs []string
 	if c.SessionTTL <= 0 {

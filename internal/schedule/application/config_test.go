@@ -41,6 +41,24 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "non-http scheme",
+			cfg: Config{
+				ProviderURL:    "ftp://api.example.com/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing host",
+			cfg: Config{
+				ProviderURL:    "https://",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr: true,
+		},
+		{
 			name: "missing API key",
 			cfg: Config{
 				ProviderURL:    "https://api.example.com/v1",
@@ -108,7 +126,7 @@ func TestParseConfig(t *testing.T) {
 				unsetEnv(t, "SCHEDULE_PROVIDER_URL")
 			},
 			wantErr:   true,
-			errSubstr: "parse schedule config",
+			errSubstr: "SCHEDULE_PROVIDER_URL",
 		},
 		{
 			name: "invalid sync interval",
