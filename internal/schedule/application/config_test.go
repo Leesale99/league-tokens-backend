@@ -214,13 +214,14 @@ func TestConfigValidate(t *testing.T) {
 			errSubstr: "SCHEDULE_PROVIDER_URL must be http(s)",
 		},
 		{
-			name: "whitespace-padded URL tolerated",
+			name: "whitespace-padded URL rejected",
 			cfg: Config{
 				ProviderURL:    "  https://api.example.com/v1\n",
 				ProviderAPIKey: "key-123",
 				SyncInterval:   5 * time.Minute,
 			},
-			wantErr: false,
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL must not have leading or trailing whitespace",
 		},
 		{
 			name: "parse error does not leak embedded credentials",
@@ -243,8 +244,12 @@ func TestConfigValidate(t *testing.T) {
 			if tt.wantErr && tt.errSubstr != "" && err != nil && !strings.Contains(err.Error(), tt.errSubstr) {
 				t.Errorf("Validate() error = %q, want substring %q", err, tt.errSubstr)
 			}
-			if tt.forbiddenSubstr != "" && err != nil && strings.Contains(err.Error(), tt.forbiddenSubstr) {
-				t.Errorf("Validate() error leaks %q: %q", tt.forbiddenSubstr, err)
+			if tt.forbiddenSubstr != "" {
+				if err == nil {
+					t.Errorf("forbiddenSubstr %q set but Validate() returned nil", tt.forbiddenSubstr)
+				} else if strings.Contains(err.Error(), tt.forbiddenSubstr) {
+					t.Errorf("Validate() error leaks %q: %q", tt.forbiddenSubstr, err)
+				}
 			}
 		})
 	}

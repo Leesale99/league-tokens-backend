@@ -19,7 +19,7 @@ func main() {
 
 	// Note: suppressed when LOG_LEVEL=warn/error — expected filtering; the
 	// log_level attribute keeps the line self-describing when it appears.
-	slog.Info("starting with valid config",
+	slog.Info("config loaded",
 		"service", cfg.Telemetry.ServiceName,
 		"log_level", level.String())
 }

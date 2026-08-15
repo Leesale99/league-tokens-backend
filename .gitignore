@@ -18,6 +18,12 @@
 # Host acceptance-run output (image tars, logs) — evidence only
 /scripts/issue-workflow/v2/spike/out/
 
+# Local environment files — never commit live secrets (ADR-0006/0007).
+# compose.env.example is the schema template and IS tracked.
+.env
+*.env
+!compose.env.example
+
 .DS_Store
 
 
