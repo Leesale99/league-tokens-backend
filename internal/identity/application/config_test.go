@@ -9,9 +9,10 @@ import (
 
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
-		name    string
-		cfg     Config
-		wantErr bool
+		name      string
+		cfg       Config
+		wantErr   bool
+		errSubstr string
 	}{
 		{
 			name: "valid config",
@@ -27,7 +28,8 @@ func TestConfigValidate(t *testing.T) {
 				SessionTTL:           0,
 				JWTSigningKeyED25519: "ed25519-private-key-pem",
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "SESSION_TTL must be positive",
 		},
 		{
 			name: "negative session TTL",
@@ -35,7 +37,8 @@ func TestConfigValidate(t *testing.T) {
 				SessionTTL:           -1 * time.Hour,
 				JWTSigningKeyED25519: "ed25519-private-key-pem",
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "SESSION_TTL must be positive",
 		},
 		{
 			name: "missing signing key",
@@ -43,7 +46,8 @@ func TestConfigValidate(t *testing.T) {
 				SessionTTL:           24 * time.Hour,
 				JWTSigningKeyED25519: "",
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "jwt_signing_key secret is required",
 		},
 	}
 	for _, tt := range tests {
@@ -52,21 +56,30 @@ func TestConfigValidate(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr = %v", err, tt.wantErr)
 			}
+			if tt.wantErr && tt.errSubstr != "" && err != nil && !strings.Contains(err.Error(), tt.errSubstr) {
+				t.Errorf("Validate() error = %q, want substring %q", err, tt.errSubstr)
+			}
 		})
 	}
 }
 
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
+	// unsetEnv mutates the process env; these tests must never run under
+	// t.Parallel, or concurrent os.Setenv would race.
 	old, existed := os.LookupEnv(key)
 	if err := os.Unsetenv(key); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		var err error
 		if existed {
-			_ = os.Setenv(key, old)
+			err = os.Setenv(key, old)
 		} else {
-			_ = os.Unsetenv(key)
+			err = os.Unsetenv(key)
+		}
+		if err != nil {
+			t.Errorf("restore env %s: %v", key, err)
 		}
 	})
 }

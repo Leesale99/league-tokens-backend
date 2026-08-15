@@ -9,9 +9,10 @@ import (
 
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
-		name    string
-		cfg     Config
-		wantErr bool
+		name      string
+		cfg       Config
+		wantErr   bool
+		errSubstr string
 	}{
 		{
 			name: "valid config",
@@ -29,7 +30,8 @@ func TestConfigValidate(t *testing.T) {
 				ProviderAPIKey: "key-123",
 				SyncInterval:   5 * time.Minute,
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL is required",
 		},
 		{
 			name: "invalid provider URL",
@@ -38,7 +40,8 @@ func TestConfigValidate(t *testing.T) {
 				ProviderAPIKey: "key-123",
 				SyncInterval:   5 * time.Minute,
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL is invalid",
 		},
 		{
 			name: "non-http scheme",
@@ -47,7 +50,8 @@ func TestConfigValidate(t *testing.T) {
 				ProviderAPIKey: "key-123",
 				SyncInterval:   5 * time.Minute,
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL must be http(s)",
 		},
 		{
 			name: "missing host",
@@ -56,7 +60,28 @@ func TestConfigValidate(t *testing.T) {
 				ProviderAPIKey: "key-123",
 				SyncInterval:   5 * time.Minute,
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL must include a host",
+		},
+		{
+			name: "plain http rejected without opt-in",
+			cfg: Config{
+				ProviderURL:    "http://api.example.com/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL must be https",
+		},
+		{
+			name: "plain http allowed with opt-in",
+			cfg: Config{
+				ProviderURL:       "http://api.example.com/v1",
+				AllowInsecureHTTP: true,
+				ProviderAPIKey:    "key-123",
+				SyncInterval:      5 * time.Minute,
+			},
+			wantErr: false,
 		},
 		{
 			name: "missing API key",
@@ -65,7 +90,8 @@ func TestConfigValidate(t *testing.T) {
 				ProviderAPIKey: "",
 				SyncInterval:   5 * time.Minute,
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "provider_api_key secret is required",
 		},
 		{
 			name: "zero sync interval",
@@ -74,7 +100,8 @@ func TestConfigValidate(t *testing.T) {
 				ProviderAPIKey: "key-123",
 				SyncInterval:   0,
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "SCHEDULE_SYNC_INTERVAL must be positive",
 		},
 		{
 			name: "negative sync interval",
@@ -83,7 +110,8 @@ func TestConfigValidate(t *testing.T) {
 				ProviderAPIKey: "key-123",
 				SyncInterval:   -1 * time.Minute,
 			},
-			wantErr: true,
+			wantErr:   true,
+			errSubstr: "SCHEDULE_SYNC_INTERVAL must be positive",
 		},
 	}
 	for _, tt := range tests {
@@ -92,33 +120,43 @@ func TestConfigValidate(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr = %v", err, tt.wantErr)
 			}
+			if tt.wantErr && tt.errSubstr != "" && err != nil && !strings.Contains(err.Error(), tt.errSubstr) {
+				t.Errorf("Validate() error = %q, want substring %q", err, tt.errSubstr)
+			}
 		})
 	}
 }
 
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
+	// unsetEnv mutates the process env; these tests must never run under
+	// t.Parallel, or concurrent os.Setenv would race.
 	old, existed := os.LookupEnv(key)
 	if err := os.Unsetenv(key); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		var err error
 		if existed {
-			_ = os.Setenv(key, old)
+			err = os.Setenv(key, old)
 		} else {
-			_ = os.Unsetenv(key)
+			err = os.Unsetenv(key)
+		}
+		if err != nil {
+			t.Errorf("restore env %s: %v", key, err)
 		}
 	})
 }
 
 func TestParseConfig(t *testing.T) {
 	tests := []struct {
-		name      string
-		setup     func(t *testing.T)
-		wantURL   string
-		wantSync  time.Duration
-		wantErr   bool
-		errSubstr string
+		name              string
+		setup             func(t *testing.T)
+		wantURL           string
+		wantSync          time.Duration
+		wantAllowInsecure bool
+		wantErr           bool
+		errSubstr         string
 	}{
 		{
 			name: "missing required provider URL",
@@ -155,6 +193,25 @@ func TestParseConfig(t *testing.T) {
 			wantURL:  "https://api.example.com/v1",
 			wantSync: 5 * time.Minute,
 		},
+		{
+			name: "insecure http opt-in flag",
+			setup: func(t *testing.T) {
+				t.Setenv("SCHEDULE_PROVIDER_URL", "http://api.example.com/v1")
+				t.Setenv("SCHEDULE_ALLOW_INSECURE_HTTP", "true")
+			},
+			wantURL:           "http://api.example.com/v1",
+			wantSync:          5 * time.Minute,
+			wantAllowInsecure: true,
+		},
+		{
+			name: "insecure http opt-in defaults to false",
+			setup: func(t *testing.T) {
+				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")
+			},
+			wantURL:           "https://api.example.com/v1",
+			wantSync:          5 * time.Minute,
+			wantAllowInsecure: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -177,6 +234,9 @@ func TestParseConfig(t *testing.T) {
 			}
 			if cfg.ProviderAPIKey != "" {
 				t.Errorf("ProviderAPIKey = %q, want empty (injected by infra/config.Load)", cfg.ProviderAPIKey)
+			}
+			if cfg.AllowInsecureHTTP != tt.wantAllowInsecure {
+				t.Errorf("AllowInsecureHTTP = %v, want %v", cfg.AllowInsecureHTTP, tt.wantAllowInsecure)
 			}
 		})
 	}

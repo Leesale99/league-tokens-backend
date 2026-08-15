@@ -11,10 +11,14 @@ import (
 
 type Config struct {
 	ProviderURL string `env:"SCHEDULE_PROVIDER_URL,required"`
+	// AllowInsecureHTTP opts into plain http:// provider URLs for local
+	// development against a mock provider. Defaults to false: the provider API
+	// key is a Docker secret and must never travel in cleartext (ADR-0007).
+	AllowInsecureHTTP bool `env:"SCHEDULE_ALLOW_INSECURE_HTTP" envDefault:"false"`
 	// ProviderAPIKey is loaded from the Docker secret "provider_api_key" by
 	// infra/config.Load. It is deliberately not an env var (ADR-0012), so
-	// ParseConfig leaves it empty and Validate only passes once the composer
-	// has injected the secret.
+	// ParseConfig leaves it empty and Validate only passes once
+	// infra/config.Load has injected the secret.
 	ProviderAPIKey string
 	SyncInterval   time.Duration `env:"SCHEDULE_SYNC_INTERVAL" envDefault:"5m"`
 }
@@ -22,7 +26,7 @@ type Config struct {
 // ParseConfig parses the env-driven fields of Config. Secret fields
 // (ProviderAPIKey) are not env vars and remain empty here; they are injected by
 // infra/config.Load before Validate runs. A Config produced by ParseConfig alone
-// will not pass Validate until the secret has been set by the composer.
+// will not pass Validate until the secret has been set by infra/config.Load.
 func ParseConfig() (*Config, error) {
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
@@ -32,7 +36,8 @@ func ParseConfig() (*Config, error) {
 }
 
 // Validate checks the env-driven fields and the injected secret. It rejects
-// provider URLs that are missing, malformed, without a host, or non-http(s).
+// provider URLs that are missing, malformed, without a host, or non-http(s);
+// plain http is rejected unless AllowInsecureHTTP opts in explicitly.
 func (c *Config) Validate() error {
 	var errs []string
 	if c.ProviderURL == "" {
@@ -41,7 +46,9 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Sprintf("SCHEDULE_PROVIDER_URL is invalid: %v", err))
 	} else if u.Host == "" {
 		errs = append(errs, "SCHEDULE_PROVIDER_URL must include a host")
-	} else if u.Scheme != "http" && u.Scheme != "https" {
+	} else if u.Scheme == "http" && !c.AllowInsecureHTTP {
+		errs = append(errs, "SCHEDULE_PROVIDER_URL must be https; set SCHEDULE_ALLOW_INSECURE_HTTP=true for local http dev")
+	} else if u.Scheme != "https" && u.Scheme != "http" {
 		errs = append(errs, "SCHEDULE_PROVIDER_URL must be http(s)")
 	}
 	if c.ProviderAPIKey == "" {
