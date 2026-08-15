@@ -23,6 +23,8 @@
 # template compose.env.example does not start with .env and stays tracked.
 .env*
 !*.env.example
+# Filled-in copy of the compose template — the natural target for real secrets.
+/compose.env
 
 .DS_Store
 

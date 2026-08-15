@@ -10,22 +10,24 @@ import (
 func main() {
 	// Boot fallback: text handler on stdout at INFO (ADR-0006), so Load()'s
 	// warnings, any fatal config error, and the boot confirmation always
-	// surface before config is parsed, on the same format as the rest of the
-	// app.
+	// surface regardless of LOG_LEVEL — the configured level isn't known
+	// until config is parsed.
 	boot := slog.New(newTextHandler(slog.LevelInfo))
 	slog.SetDefault(boot)
 
 	cfg := config.MustLoad()
 	level := cfg.Telemetry.LogLevelSlog()
-	slog.SetDefault(slog.New(newTextHandler(level)))
 
-	// Always-on boot confirmation (via the INFO boot handler): a healthy start
-	// must be observable even when LOG_LEVEL=warn/error would filter the
-	// configured handler. log_level reports the effective level for the rest
-	// of the process.
+	// Emit the always-on boot confirmation while boot is still the default
+	// logger, then swap to the configured-level handler for everything after.
+	// log_level reports the effective level for the rest of the process.
 	boot.Info("config loaded",
 		"service", cfg.Telemetry.ServiceName,
 		"log_level", level.String())
+	slog.SetDefault(slog.New(newTextHandler(level)))
+	// TODO(#42): init the OTLP exporter from cfg.Telemetry (endpoint + token);
+	// until tracing/metrics land, OTLP_ENDPOINT and otlp_token are validated
+	// but unused.
 }
 
 // newTextHandler builds the app's slog handler: text format on stdout
