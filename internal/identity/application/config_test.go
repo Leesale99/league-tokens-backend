@@ -64,9 +64,9 @@ func unsetEnv(t *testing.T, key string) {
 	}
 	t.Cleanup(func() {
 		if existed {
-			os.Setenv(key, old)
+			_ = os.Setenv(key, old)
 		} else {
-			os.Unsetenv(key)
+			_ = os.Unsetenv(key)
 		}
 	})
 }
