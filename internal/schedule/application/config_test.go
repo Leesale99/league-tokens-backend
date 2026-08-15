@@ -309,6 +309,14 @@ func TestParseConfig(t *testing.T) {
 			errSubstr: "SCHEDULE_PROVIDER_URL",
 		},
 		{
+			name: "set-but-empty provider URL rejected at parse",
+			setup: func(t *testing.T) {
+				t.Setenv("SCHEDULE_PROVIDER_URL", "")
+			},
+			wantErr:   true,
+			errSubstr: "should not be empty",
+		},
+		{
 			name: "invalid sync interval",
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")

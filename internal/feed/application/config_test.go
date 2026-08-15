@@ -309,6 +309,14 @@ func TestParseConfig(t *testing.T) {
 			errSubstr: "FEED_PROVIDER_URL",
 		},
 		{
+			name: "set-but-empty provider URL rejected at parse",
+			setup: func(t *testing.T) {
+				t.Setenv("FEED_PROVIDER_URL", "")
+			},
+			wantErr:   true,
+			errSubstr: "should not be empty",
+		},
+		{
 			name: "invalid poll interval",
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "https://feed.example.com/v2")
