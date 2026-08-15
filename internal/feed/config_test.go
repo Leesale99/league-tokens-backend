@@ -84,6 +84,45 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "embedded credentials rejected",
+			cfg: Config{
+				ProviderURL:    "https://user:pass@feed.example.com/v2",
+				ProviderAPIKey: "key-123",
+				PollInterval:   1 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "FEED_PROVIDER_URL must not contain embedded credentials",
+		},
+		{
+			name: "uppercase https scheme accepted",
+			cfg: Config{
+				ProviderURL:    "HTTPS://feed.example.com/v2",
+				ProviderAPIKey: "key-123",
+				PollInterval:   1 * time.Minute,
+			},
+			wantErr: false,
+		},
+		{
+			name: "uppercase http rejected without opt-in",
+			cfg: Config{
+				ProviderURL:    "HTTP://feed.example.com/v2",
+				ProviderAPIKey: "key-123",
+				PollInterval:   1 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "FEED_PROVIDER_URL must be https",
+		},
+		{
+			name: "port-only host rejected",
+			cfg: Config{
+				ProviderURL:    "https://:443/v2",
+				ProviderAPIKey: "key-123",
+				PollInterval:   1 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "FEED_PROVIDER_URL must include a host",
+		},
+		{
 			name: "missing API key",
 			cfg: Config{
 				ProviderURL:    "https://feed.example.com/v2",

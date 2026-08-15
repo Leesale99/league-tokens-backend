@@ -37,7 +37,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, "SESSION_TTL must be positive")
 	}
 	if c.JWTSigningKeyED25519 == "" {
-		errs = append(errs, "jwt_signing_key secret is required")
+		errs = append(errs, "jwt_signing_key secret is required (injected by infra/config.Load from /run/secrets/jwt_signing_key)")
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("identity config: %s", strings.Join(errs, "; "))

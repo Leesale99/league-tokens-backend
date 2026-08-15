@@ -36,23 +36,26 @@ func ParseConfig() (*Config, error) {
 }
 
 // Validate checks the env-driven fields and the injected secret. It rejects
-// provider URLs that are missing, malformed, without a host, or non-http(s);
-// plain http is rejected unless AllowInsecureHTTP opts in explicitly.
+// provider URLs that are missing, malformed, without a host, with embedded
+// credentials, or non-http(s); plain http is rejected unless AllowInsecureHTTP
+// opts in explicitly.
 func (c *Config) Validate() error {
 	var errs []string
 	if c.ProviderURL == "" {
 		errs = append(errs, "FEED_PROVIDER_URL is required")
 	} else if u, err := url.Parse(c.ProviderURL); err != nil {
 		errs = append(errs, fmt.Sprintf("FEED_PROVIDER_URL is invalid: %v", err))
-	} else if u.Host == "" {
+	} else if u.Host == "" || u.Hostname() == "" {
 		errs = append(errs, "FEED_PROVIDER_URL must include a host")
-	} else if u.Scheme == "http" && !c.AllowInsecureHTTP {
+	} else if u.User != nil {
+		errs = append(errs, "FEED_PROVIDER_URL must not contain embedded credentials (user:pass@)")
+	} else if s := strings.ToLower(u.Scheme); s == "http" && !c.AllowInsecureHTTP {
 		errs = append(errs, "FEED_PROVIDER_URL must be https; set FEED_ALLOW_INSECURE_HTTP=true for local http dev")
-	} else if u.Scheme != "https" && u.Scheme != "http" {
+	} else if s != "https" && s != "http" {
 		errs = append(errs, "FEED_PROVIDER_URL must be http(s)")
 	}
 	if c.ProviderAPIKey == "" {
-		errs = append(errs, "provider_api_key secret is required")
+		errs = append(errs, "provider_api_key secret is required (injected by infra/config.Load from /run/secrets/provider_api_key)")
 	}
 	if c.PollInterval <= 0 {
 		errs = append(errs, "FEED_POLL_INTERVAL must be positive")

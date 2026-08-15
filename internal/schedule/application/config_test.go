@@ -84,6 +84,45 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "embedded credentials rejected",
+			cfg: Config{
+				ProviderURL:    "https://user:pass@api.example.com/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL must not contain embedded credentials",
+		},
+		{
+			name: "uppercase https scheme accepted",
+			cfg: Config{
+				ProviderURL:    "HTTPS://api.example.com/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr: false,
+		},
+		{
+			name: "uppercase http rejected without opt-in",
+			cfg: Config{
+				ProviderURL:    "HTTP://api.example.com/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL must be https",
+		},
+		{
+			name: "port-only host rejected",
+			cfg: Config{
+				ProviderURL:    "https://:443/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   5 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL must include a host",
+		},
+		{
 			name: "missing API key",
 			cfg: Config{
 				ProviderURL:    "https://api.example.com/v1",
@@ -180,6 +219,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")
 				t.Setenv("SCHEDULE_SYNC_INTERVAL", "10m")
+				unsetEnv(t, "SCHEDULE_ALLOW_INSECURE_HTTP")
 			},
 			wantURL:  "https://api.example.com/v1",
 			wantSync: 10 * time.Minute,
@@ -189,6 +229,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")
 				unsetEnv(t, "SCHEDULE_SYNC_INTERVAL")
+				unsetEnv(t, "SCHEDULE_ALLOW_INSECURE_HTTP")
 			},
 			wantURL:  "https://api.example.com/v1",
 			wantSync: 5 * time.Minute,
@@ -198,6 +239,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "http://api.example.com/v1")
 				t.Setenv("SCHEDULE_ALLOW_INSECURE_HTTP", "true")
+				unsetEnv(t, "SCHEDULE_SYNC_INTERVAL")
 			},
 			wantURL:           "http://api.example.com/v1",
 			wantSync:          5 * time.Minute,
@@ -207,6 +249,8 @@ func TestParseConfig(t *testing.T) {
 			name: "insecure http opt-in defaults to false",
 			setup: func(t *testing.T) {
 				t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")
+				unsetEnv(t, "SCHEDULE_ALLOW_INSECURE_HTTP")
+				unsetEnv(t, "SCHEDULE_SYNC_INTERVAL")
 			},
 			wantURL:           "https://api.example.com/v1",
 			wantSync:          5 * time.Minute,
