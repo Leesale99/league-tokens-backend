@@ -17,17 +17,6 @@ the machinery; role contracts live in `roles/`, track manifests in `tracks/`
   `spike/run_spike.sh`; per-role image layers land in Task 4.3).
 - Model egress policy: `sbx policy allow network opencode.ai pi.dev`
   (spike runners do this idempotently).
-- **Host-only tools patch for pi-sbx** (required for vault/web/library tools
-  while a sandbox is selected): `@christianmoesl/pi-sbx` blocks every tool
-  outside its `ROUTED_TOOLS` set, including extension tools like `obsidian`,
-  context7 (`resolve-library-id`, `query-docs`) and pi-web-access
-  (`web_search`, `source_check`, `fetch_content`, `get_search_content`).
-  These run in the pi process on the host anyway, so unblocking suffices.
-  Apply once with `scripts/issue-workflow/v2/patch-pi-sbx.sh` and re-apply
-  after any `pi update` / reinstall of the package; the tool list lives in
-  `~/.pi/agent/sbx-host-tools` (or `PI_SBX_HOST_TOOLS` env). Tools on the
-  list run host-side WITHOUT per-call approval — keep it to tools that
-  inherently need the host (CLI + vault, host credentials).
 
 ## Role → sandbox spec
 
