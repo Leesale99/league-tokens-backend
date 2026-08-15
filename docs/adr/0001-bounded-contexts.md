@@ -1,4 +1,4 @@
-# ADR-0001 — Bounded Contexts and the Ledger as Sole Money Authority
+# ADR-0001 — Bounded Contexts and the Ledger as Sole Balance Authority
 
 Status: Accepted
 Date: 2026-07-22
@@ -25,7 +25,7 @@ Seven bounded contexts plus one shared kernel, so the backend modules are:
 | 1 | `identity` | users, sessions, auth | — |
 | 2 | `schedule` | raw feed payload: teams, rounds, matches, settled odds, results | feed adapter only |
 | 3 | `game` | engine state machines (Season, Round, Player-season, Ride, `acc`, `Team.base`), ResolveMatch, AutoBurn, FinalAutoBurn, Register | `schedule` events, `ledger` command results |
-| 4 | `ledger` | ALL monetary/token balance writes: `CommonPool`, `wallet.currency`, `wallet.tokens[*]`, `Team.reserve`. Double-entry journal. Sole authority for balance invariants §6.2/§6.3/§6.7 | commands from `game`, `market`, `identity` (registration grant) |
+| 4 | `ledger` | ALL currency/token balance writes: `CommonPool`, `wallet.currency`, `wallet.tokens[*]`, `Team.reserve`. Double-entry journal. Sole authority for balance invariants §6.2/§6.3/§6.7 | commands from `game`, `market`, `identity` (registration grant) |
 | 5 | `rankings` | in-engine projections: `player_TB`, `team_basket`, standings/boards, tiebreaks | burn/reserve events from `ledger`+`game` |
 | 6 | `market` | order book, matches, fills (pluggable, dormant at `Launch`) | `ledger` balance commands, `game` base price |
 | 7 | `feed` (infra adapter) | ingestion boundary for external schedule/odds/results | outside world |
@@ -47,14 +47,14 @@ Seven bounded contexts plus one shared kernel, so the backend modules are:
 4. **`acc` stays with `game` (Ride aggregate)** — it is a per-ride liability produced by
    the engine formulas, not a wallet balance.
 5. **`player_TB` / `team_basket` live in `rankings`** as projections of burn/reserve
-   events from `game`+`ledger`. They are not money.
+   events from `game`+`ledger`. They are not currency.
 6. **Player / Registration season-scoped aggregate lives in `game`** (favourite_team
    immutability, registration state). Its currency side-effect (`GrantCurrency`) is a
    command to `ledger`. Revisit splitting a `player` context at the 1.0 cut if it grows.
 
 ## Consequences
 
-- Positive: single source of truth for money; clean audit log; `[Market]` reuses the same
+- Positive: single source of truth for balances; clean audit log; `[Market]` reuses the same
   Ledger commands as `game` later; Ride/burn invariants stay inside `game`; `schedule`
   can be sourced from any feed (swap adapter) without touching engine logic.
 - Negative: `game` and `ledger` are not independently writable in `Launch` (synchronous
@@ -68,7 +68,7 @@ Seven bounded contexts plus one shared kernel, so the backend modules are:
 
 ## Alternatives considered
 
-- **Merge Treasury+Ledger into `game` (original proposal).** Rejected: couples money
+- **Merge Treasury+Ledger into `game` (original proposal).** Rejected: couples balance writes
   with gameplay formulas; blocks clean `[Market]` split; loses audit-trail simplicity.
 - **Game pre-checks balance, Ledger re-validates on apply.** Rejected: opens a TOCTOU
   race for write-throughput we don't need at 10k users; harder audit.

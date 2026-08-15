@@ -1,4 +1,4 @@
-# ADR-0010 — Fixed-Point Money Type (`shopspring/decimal`, precision-locked)
+# ADR-0010 — Fixed-Point Decimal Arithmetic (`shopspring/decimal`, precision-locked)
 
 Status: Accepted
 Date: 2026-07-22
@@ -23,7 +23,7 @@ of helper choice.)
 
 ### Module location
 
-`internal/infra/money` is the **only** package allowed to perform arithmetic on money
+`internal/infra/dec` is the **only** package allowed to perform arithmetic on in-game Currency
 amounts. It re-exports the typed `Amount`, `Tokens`, `Odds` aliases over
 `decimal.Decimal` and exposes only the operations the spec uses. Every operation
 ending in a persisted value applies `.Round(6)` once (round-half-up, the `decimal`
@@ -50,17 +50,17 @@ default once `decimal.DivisionPrecision = 6`):
 
 - `decimal.DivisionPrecision` set globally to **6**.
 - All persisted arithmetic functions defined above apply `.Round(6)` exactly once,
-  inside `internal/infra/money`.
+  inside `internal/infra/dec`.
 - `.Div(...)`, `.RoundUp`, `.RoundDown`, `.Floor`, `.Truncate` calls are **banned** in
-  `internal/infra/money`. We use only `.Round(6)` (round-half-up, the `decimal` default
+  `internal/infra/dec`. We use only `.Round(6)` (round-half-up, the `decimal` default
   after `decimal.DivisionPrecision = 6`).
 - Lint rule (depguard + ruleguard pattern) bans any `.Round`/`.RoundUp`/`.RoundDown`/
-  `.Floor`/`.Truncate`/`.Div` call anywhere outside `internal/infra/money` and bans
-  everything except `.Round(6)` inside `internal/infra/money`.
+  `.Floor`/`.Truncate`/`.Div` call anywhere outside `internal/infra/dec` and bans
+  everything except `.Round(6)` inside `internal/infra/dec`.
 
 ### Precision verification (test contract)
 
-- Property test: every `Amount`/`Tokens`/`Odds` returned by a `money` function has
+- Property test: every `Amount`/`Tokens`/`Odds` returned by a `dec` function has
   `.Exponent() ≥ -6` (i.e. fits in six decimal places). Anything else fails the build.
 - Property test: `LossDestroy(t, X).destroyed + .returned == t` (exact), and
   `destroyed == decimal.Require(t.Mul(X)).Round(6)`.
@@ -70,13 +70,13 @@ default once `decimal.DivisionPrecision = 6`):
   precision rationals and asserting equality.
 - Property test for `MulCurrency` and `UpdateBase`: the stored value equals
   `Round(6)(base × tokens, base × mult)` against an arbitrary-precision source.
-- Overflow guard test: a documented sanity ceiling (per `money.Config.MaxBalance`,
+- Overflow guard test: a documented sanity ceiling (per `dec.Config.MaxBalance`,
   set well above engine cap) rejects any single balance that would exceed it; catches a
   misconfigured constant early.
 
 ### Storage
 
-- Postgres column type for monetary balances: **`NUMERIC(38, 6)`** (38 digits, 6 after
+- Postgres column type for currency/token balances: **`NUMERIC(38, 6)`** (38 digits, 6 after
   the decimal point). `NUMERIC(38, 6)` accepts only 6-decimal values; values with extra
   precision are rounded **by Postgres's own NUMERIC rounding** at the column scale on
   insert. Postgres's NUMERIC rounding is its own policy, so we **never** depend on it —
@@ -84,11 +84,11 @@ default once `decimal.DivisionPrecision = 6`):
   `.Round(6)` before write). A project-level property test asserts that for every
   stored value, `stored == decimal.Decimal(s.InMemory).Round(6)` holds — i.e. what we
   wrote is exactly what we computed, not re-rounded by Postgres.
-- `money.Odds` column type is `NUMERIC(8, 6)` (odds rarely exceed `99.000000`).
+- `dec.Odds` column type is `NUMERIC(8, 6)` (odds rarely exceed `99.000000`).
 
 ### JSON serialization
 
-- `money.Amount.MarshalJSON` returns the value as a string in fixed six-decimal
+- `dec.Amount.MarshalJSON` returns the value as a string in fixed six-decimal
   format (always six digits after the dot, e.g. `"50.000000"`, `"2.500000"`,
   `"0.250000"`). Frontends parse a constant shape.
 - `decimal.Decimal`'s default JSON would emit `"50"` then `"50.5"` then `"50.500000"`
@@ -97,7 +97,7 @@ default once `decimal.DivisionPrecision = 6`):
 
 ### Feed entry contract
 
-- The feed adapter Parses provider payloads into `money.Odds` using
+- The feed adapter Parses provider payloads into `dec.Odds` using
   `decimal.NewFromString`. If the upstream `odds` payload carries more than 6 decimal
   places it is `.Round(6)` before persistence (per the §6.12 discipline, same as every
   other persisted arithmetic step); the engine never sees anything outside 6 dp.

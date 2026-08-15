@@ -86,10 +86,10 @@ flowchart LR
     class obs obsStyle;
 ```
 
-### 1.1 Money flows through one authority
+### 1.1 Balances flow through one authority
 
-Money is the **only** cross-cutting value with a security invariant (Spec 6.12). All
-balance writes flow through the `ledger` context, which is also the **only** money
+Balances are the **only** cross-cutting value with a security invariant (Spec 6.12). All
+balance writes flow through the `ledger` context, which is also the **only** balance
 issuance and movement authority (ADR-0001): other contexts emit *intent commands*
 (`LockIntent`, `BurnIntent`, `ReserveBuyIntent`, `GrantCurrencyIntent`) and react to
 accepted/rejected events. At Launch, Game↔Ledger calls happen **synchronously inside one
@@ -158,7 +158,7 @@ flowchart TB
     edge["<b>http edge</b><br/>router · middlewares · SSE broker<br/>problem+json mapper (ADR-0011)"]
 
     subgraph K["infra — shared kernel"]
-        infra["bus · scheduler · telemetry · db (sqlc)<br/>money · events · config · apperr"]
+        infra["bus · scheduler · telemetry · db (sqlc)<br/>currency · events · config · apperr"]
     end
 
     main --> identity & schedule & game & ledger & rankings & edge
@@ -210,7 +210,7 @@ Supporting packages:
 - `internal/feed/` is an adapter-only package — a stateless upstream polled HTTP
   client writing through the `schedule` port; owns no state.
 - `internal/infra/` is the shared kernel: `bus/`, `scheduler/`, `telemetry/`,
-  `db/` (one sqlc fileset per context schema), `money/`, `events/` (shared event
+  `db/` (one sqlc fileset per context schema), `dec/`, `events/` (shared event
   schemas with outbox JSON), `config/`, `apperr/`.
 - `internal/http/` is the edge: router, middlewares (auth, rate-limit, idempotency),
   SSE broker, problem+json mapper (ADR-0011), the wire endpoints.
@@ -230,7 +230,7 @@ Each context lives as `internal/<name>/`:
 | `rankings` | read-model projections: `player_TB`, `team_basket`, boards + tiebreaks | none (projection cache = own DB rows) | outbox of `game`+`ledger` |
 | `market` | (dormant at `[Launch]`) order book, matching engine, fills | via `ledger` intent only | `ledger`, `game` base price |
 | `feed` | none (adapter client only) | none directly; writes through `schedule` port | external upstream HTTP |
-| `infra` (kernel) | event bus, scheduler, telemetry, db codegen, `money`, `events`, `config`, `apperr`, `http/` edge | none (it is plumbing) | — |
+| `infra` (kernel) | event bus, scheduler, telemetry, db codegen, `dec`, `events`, `config`, `apperr`, `http/` edge | none (it is plumbing) | — |
 
 ---
 
@@ -313,7 +313,7 @@ sequenceDiagram
         Note over G,DB: One Postgres transaction
         G->>DB: Load Ride by id — read-only check ride.state == WonPending · SELECT … FOR UPDATE
         G->>G: Validate phase — ride.governing_round == current ActionPhase
-        G->>L: Burn intent — tb_credit = tokens_locked + acc · currency = money.MulCurrency(base_at_lock, tokens_locked)
+        G->>L: Burn intent — tb_credit = tokens_locked + acc · currency = dec.MulCurrency(base_at_lock, tokens_locked)
         L->>DB: AcquireCredit(player, currency, common_pool) — journal_entries (double-entry), balances updated
         L->>DB: DestroyTokens(player, team, tokens_locked) — sink
         G->>DB: UPDATE rides SET state Burned, version = old+1 WHERE id AND version = old — optimistic concurrency
@@ -461,7 +461,7 @@ stateDiagram-v2
 | 6.8 — Favourite immutability | `Player-season` instantiated once per `(subject_id, season_id)`. Postgres `CHECK (favourite_team_id IS NOT NULL)` + a `BEFORE UPDATE` trigger `RAISE EXCEPTION` on any update of `favourite_team_id`. |
 | 6.9 — Result append-only | `UPDATE matches SET status='Resolved' WHERE status='Scheduled' AND match_id=?` statement. 0 rows affected returns `game.already_resolved` 409. |
 | 6.11 — Terminal states | Postgres partial CHECK that blocks any UPDATE on rows in `Lost/Burned/Unlocked` unless `version` increments AND the next state is itself terminal; otherwise `game.invalid_state_transition`. |
-| 6.12 — Precision | outsourced to `internal/infra/money` (ADR-0010). |
+| 6.12 — Precision | outsourced to `internal/infra/dec` (ADR-0010). |
 
 ### 4.4 ledger
 
@@ -469,7 +469,7 @@ stateDiagram-v2
   one **currency account** per player; one `CommonPool` equity account; one
   `TreasuryEquity` account absorbing the Spec 6.10 mechanical-mint guarantee. Balances
   are a *projection*; the append-only `journal_entries` table is the source of truth.
-- **Intent commands** (the *only* entry points for money writes):
+- **Intent commands** (the *only* entry points for balance writes):
 
 | Intent command | Journal effect |
 |---|---|
@@ -539,8 +539,8 @@ Cross-context call examples:
 
 ## 6. Data model (Postgres)
 
-Schema-per-context, enforced by `sqlc` schema boundaries. All money columns are
-`NUMERIC(38,6)` (or `NUMERIC(8,6)` for `money.Odds`), per ADR-0010. Schema shapes below
+Schema-per-context, enforced by `sqlc` schema boundaries. All currency/balance columns are
+`NUMERIC(38,6)` (or `NUMERIC(8,6)` for `dec.Odds`), per ADR-0010. Schema shapes below
 skip the enum constraints and audit columns for brevity; full SQL lives in
 `migrations/<context>/`.
 
@@ -631,7 +631,7 @@ erDiagram
     }
 ```
 
-**Money and projection schemas** — `ledger` + `rankings` + `infra`:
+**Balance and projection schemas** — `ledger` + `rankings` + `infra`:
 
 ```mermaid
 erDiagram
@@ -880,7 +880,7 @@ CREATE TABLE ledger.balances (
   balance NUMERIC(38,6) NOT NULL,
   version INT NOT NULL DEFAULT 1
 );
--- Money invariants: non-negative balances for player_currency / player_token / team_reserve
+-- Balance invariants: non-negative balances for player_currency / player_token / team_reserve
 CREATE OR REPLACE FUNCTION ledger.no_negative()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -1070,17 +1070,17 @@ flowchart LR
   ping, scheduler alive, outbox drain liveness). Used by Compose `healthcheck` and
   Caddy upstream probe.
 
-### 7.4 Money
+### 7.4 Currency & precision
 
 *Settled by ADR-0010 (decimal + round-half-up).*
 
-- `internal/infra/money` re-exports `Amount`, `Tokens`, `Odds` aliases over
+- `internal/infra/dec` re-exports `Amount`, `Tokens`, `Odds` aliases over
   `decimal.Decimal` from `github.com/shopspring/decimal`.
 - `decimal.DivisionPrecision = 6` globally; the helper applies `.Round(6)` (half-up)
   at every persisted arithmetic step (`MulByDecimal`, `MulCurrency`, `UpdateBase`,
   `AccDelta`, `LossDestroy`).
 - A `depguard`+`ruleguard` lint rule bans `.Div/.Floor/.Truncate/.RoundUp/.RoundDown`
-  everywhere and bans `.Round(...)` outside the `internal/infra/money` package.
+  everywhere and bans `.Round(...)` outside the `internal/infra/dec` package.
 - Storage: `NUMERIC(38,6)` (or `NUMERIC(8,6)` for odds).
 - Custom `MarshalJSON` produces the fixed six-decimal string `"50.000000"`.
 
@@ -1308,7 +1308,7 @@ flowchart LR
 |---|---|---|---|
 | 1. Read path | Cloudflare edge cache for boards; PG read replica + PgBouncer; Redis cache-aside; extract `rankings` to its own stateless service | backend CPU sustained > 65% over 5 min; DB read latency p99 > 50 ms | none |
 | 2. Event backbone | outbox relay publishes to managed broker (Kafka / NATS JetStream); downstream consumers wire-subscribe | outbox lag > 1 s sustained; 2nd downstream context needed | none — transport swap |
-| 3. Extract `ledger` | ledger Postgres on its own instance; ADR-0002 sync seam flips to async commands over the backbone (keyed by `user_id`) | ledger p99 latency > 50 ms at peak burn burst | player UX becomes "pending" on mutating money ops that wait for ledger accept; documented per-op |
+| 3. Extract `ledger` | ledger Postgres on its own instance; ADR-0002 sync seam flips to async commands over the backbone (keyed by `user_id`) | ledger p99 latency > 50 ms at peak burn burst | player UX becomes "pending" on mutating balance ops that wait for ledger accept; documented per-op |
 | 4. Extract `game` | multiple game instances partitioned by `season_id`; single-writer-per-season preserved; `ResolveMatch` ordering preserved by `match_id` partition key | game CPU saturates at peak; single season too big for one box | none |
 | 5. SSE fan-out | SSE emits to Redis Pub/Sub or NATS JetStream; any backend serves any subscriber; LB no longer requires sticky sessions | SSE per backend crosses the per-instance budget | none |
 | 6. Managed compute | migrate to managed K8s (LKE/GKE/EKS); multi-AZ Postgres with PITR; per-context blue/green; canary; Cloudflare managed WAF; external IdP if MFA/social login; WebAuthn | multi-AZ resilience beats single-VPS footprint on cost | none |
@@ -1336,7 +1336,7 @@ than a domain rewrite. Async (Stage 3) is introduced only when async earns its k
 | 6.9 — Result append-only | `UPDATE matches SET status='Resolved' WHERE status='Scheduled' AND match_id=?`; 0 rows → `game.already_resolved` 409 | 4.3 |
 | 6.10 — CommonPool mechanical safety | ledger never rewrites a `CommonPool` negative entry; observability alert; `TreasuryEquity` absorbs in books (ADR-0001) | 4.4 |
 | 6.11 — Terminal states | Postgres BEFORE UPDATE trigger `game.block_terminal_mutations`; optimistic `version` increments | 6.3 · 4.3 |
-| 6.12 — Precision | `internal/infra/money` centralizes `.Round(6)` (half-up) at every persisted step; lint + tests + storage scale `NUMERIC(38,6)` | 7.4 · ADR-0010 |
+| 6.12 — Precision | `internal/infra/dec` centralizes `.Round(6)` (half-up) at every persisted step; lint + tests + storage scale `NUMERIC(38,6)` | 7.4 · ADR-0010 |
 
 Spec 1–10 are also referenced via the glossary (`docs/specs/glossary.md`) so unchanged
 engine-domain contracts (lifecycles, ride state machine, championships) are not
@@ -1527,7 +1527,7 @@ cookie; `system`-only endpoints excluded from `/v1` (system port). Errors render
 | 0007 | security posture |
 | 0008 | package layout |
 | 0009 | scaling strategy |
-| 0010 | money (decimal + round-half-up) |
+| 0010 | fixed-point arithmetic (decimal + round-half-up) |
 | 0011 | typed error model |
 | 0012 | configuration management |
 

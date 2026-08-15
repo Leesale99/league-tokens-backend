@@ -33,7 +33,7 @@ A fantasy-economy game on a real basketball league. Players buy team **Tokens** 
 | Asset | Definition |
 |---|---|
 | **Token** | Per-team asset. Bought from a finite team **reserve**, locked into matches, burned for TB. |
-| **Currency** | In-game money. Fuel for everything; worthless as a score. **Closed loop** — supply fixed at registration grants, no faucet, no mint. |
+| **Currency** | In-game currency — **NOT fiat, NOT real money** (granted at registration; never purchased or redeemed; no external value). Fuel for everything; worthless as a score. **Closed loop** — supply fixed at registration grants, no faucet, no mint. |
 | **TB** | Score unit. Produced *only* by burning. Each burned token contributes **1 TB**; the ride bonus (**acc**) adds TB on top. Fills team baskets + player totals. |
 | **acc (virtual TB)** | Per-ride accumulator, accruing with each win. Realised as TB on burn (or auto-burn); forfeited on loss or unlock. |
 | **Base price** | Per-team engine price. Starts at **1.0**; ×1.05 per win, ×0.95 per loss. Drives reserve ask, sell cap, and burn currency return. |
