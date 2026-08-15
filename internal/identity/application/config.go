@@ -9,7 +9,11 @@ import (
 )
 
 type Config struct {
-	SessionTTL           time.Duration `env:"SESSION_TTL" envDefault:"24h"`
+	SessionTTL time.Duration `env:"SESSION_TTL" envDefault:"24h"`
+	// JWTSigningKeyED25519 is loaded from the Docker secret "jwt_signing_key"
+	// by infra/config.Load. It is deliberately not an env var (ADR-0012), so
+	// ParseConfig leaves it empty and Validate only passes once the composer
+	// has injected the secret.
 	JWTSigningKeyED25519 string
 }
 

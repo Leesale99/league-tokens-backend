@@ -10,11 +10,19 @@ import (
 )
 
 type Config struct {
-	ProviderURL    string        `env:"FEED_PROVIDER_URL,required"`
+	ProviderURL string `env:"FEED_PROVIDER_URL,required"`
+	// ProviderAPIKey is loaded from the Docker secret "provider_api_key" by
+	// infra/config.Load. It is deliberately not an env var (ADR-0012), so
+	// ParseConfig leaves it empty and Validate only passes once the composer
+	// has injected the secret.
 	ProviderAPIKey string
 	PollInterval   time.Duration `env:"FEED_POLL_INTERVAL" envDefault:"1m"`
 }
 
+// ParseConfig parses the env-driven fields of Config. Secret fields
+// (ProviderAPIKey) are not env vars and remain empty here; they are injected by
+// infra/config.Load before Validate runs. A Config produced by ParseConfig alone
+// will not pass Validate until the secret has been set by the composer.
 func ParseConfig() (*Config, error) {
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {

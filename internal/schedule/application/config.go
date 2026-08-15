@@ -10,7 +10,11 @@ import (
 )
 
 type Config struct {
-	ProviderURL    string        `env:"SCHEDULE_PROVIDER_URL,required"`
+	ProviderURL string `env:"SCHEDULE_PROVIDER_URL,required"`
+	// ProviderAPIKey is loaded from the Docker secret "provider_api_key" by
+	// infra/config.Load. It is deliberately not an env var (ADR-0012), so
+	// ParseConfig leaves it empty and Validate only passes once the composer
+	// has injected the secret.
 	ProviderAPIKey string
 	SyncInterval   time.Duration `env:"SCHEDULE_SYNC_INTERVAL" envDefault:"5m"`
 }
