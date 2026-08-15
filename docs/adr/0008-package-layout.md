@@ -38,7 +38,7 @@ extracted to its own process at 1.0 by re-pointing one port.
   - `telemetry/`  slog JSON, OTel, Prometheus wiring
   - `db/`         `sqlc`-generated code, **one fileset per context schema** (preserves
                   a clean seam for 1.0 per-context DB extraction)
-  - `money/`      `int64` fixed-point 1e-6 helper (ADR-0009)
+  - `dec/`      fixed-point arithmetic on in-game Currency/Tokens/Odds (`shopspring/decimal`) — ADR-0010
   - `events/`     shared event schemas (`BurnOccurred`, `ResultAvailable`,
                   `CutoffFired`, `MatchResolved`, `ReserveBuyOccurred`, …). Outbox rows
                   carry `type` + JSON payload; consumers filter on `type`.

@@ -8,7 +8,7 @@ Superseded by: —
 
 ## Context
 
-ADR-0001 settled the bounded contexts and named `Ledger` the sole money authority with
+ADR-0001 settled the bounded contexts and named `Ledger` the sole balance authority with
 an intent-command contract. This ADR decides:
 
 1. What storage backs each context for the Launch demo (1 core / 4 GB / 50 GB VPS,

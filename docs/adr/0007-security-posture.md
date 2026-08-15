@@ -76,9 +76,9 @@ Launch runs on a single VPS reachable from the public internet.
 - At Launch we collect **email + hashed password only**. No real name, no payment info,
   no third-party identity. Number of unique balances far more sensitive than PII here.
 
-### Audit log of money + auth
+### Audit log of balances + auth
 
-- Every money-mutating op produces durable records: `ledger.journal_entries`,
+- Every balance-mutating op produces durable records: `ledger.journal_entries`,
   `game.ride_events` (ADR-0002).
 - `identity` auth events (login, refresh rotation, password reset, login failure
   above threshold) written as structured logs with `subject_id`, `ip`, `user_agent`,
@@ -112,8 +112,8 @@ Launch runs on a single VPS reachable from the public internet.
 - §6.11 terminal states (`Lost`, `Burned`, `Unlocked`): Postgres CHECK constraints block
   any row in a terminal state from being mutated again (handled by the optimistic-version
   update + state-machine guard).
-- §6.12 precision: all token math done in `int64` representing 1e-6 units; financial
-  helper package `internal/money` with overflow-add/sub protection; the only `floor`
+- §6.12 precision: all token math done with fixed-point decimal (see ADR-0010); financial
+  helper package `internal/infra/dec` with overflow-add/sub protection; the only `floor`
   is `LossDestroy` and it explicit.
 
 ## Consequences

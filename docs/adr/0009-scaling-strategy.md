@@ -13,12 +13,12 @@ must hold working code and traffic — no big-bang rewrites.
 
 The seams that make this possible were deliberately carved at Launch: consumer-owns-port
 (ADR-0008), Game↔Ledger sync seam with the async flip available on demand (ADR-0002),
-outbox on every money-mutating op (ADR-0002), system-only token authority (ADR-0004),
+outbox on every balance-mutating op (ADR-0002), system-only token authority (ADR-0004),
 and per-context SQL schemas (ADR-0002/0008).
 
 ## Decision — six staged extraction checkpoints
 
-### Stage 1 — Read path (decoupling reads from money writes)
+### Stage 1 — Read path (decoupling reads from balance writes)
 
 - Cloudflare edge cache for **read-only public** reads (`/v1/boards/*`,
   `/v1/season/*` GET).
@@ -43,7 +43,7 @@ and per-context SQL schemas (ADR-0002/0008).
 ### Stage 3 — Extract `ledger` (flip Game↔Ledger to async)
 
 - `ledger` moves to its own Postgres instance (specialist IOPS profile, isolated write
-  latencies — money writes should not be throttled by read traffic).
+  latencies — balance writes should not be throttled by read traffic).
 - ADR-0002's documented seam kicks in: Game↔Ledger flips from the in-process sync
   function call to **async commands** over the backbone. Commands keyed by `user_id` to
   preserve per-account ordering; idempotency via the existing `idempotency` table

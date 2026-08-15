@@ -17,3 +17,7 @@
 
 # Host acceptance-run output (image tars, logs) — evidence only
 /scripts/issue-workflow/v2/spike/out/
+
+.DS_Store
+
+
