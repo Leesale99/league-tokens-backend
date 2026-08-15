@@ -184,6 +184,17 @@ func TestConfigValidate(t *testing.T) {
 			errSubstr: "SCHEDULE_PROVIDER_URL has an invalid port",
 		},
 		{
+			name: "opt-in does not relax scheme whitelist",
+			cfg: Config{
+				ProviderURL:       "ftp://api.example.com/v1",
+				AllowInsecureHTTP: true,
+				ProviderAPIKey:    "key-123",
+				SyncInterval:      5 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "SCHEDULE_PROVIDER_URL must be http(s)",
+		},
+		{
 			name: "parse error does not leak embedded credentials",
 			cfg: Config{
 				ProviderURL:    "https://user:pass@api.example.com/%zz",

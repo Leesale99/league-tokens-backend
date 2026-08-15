@@ -184,6 +184,17 @@ func TestConfigValidate(t *testing.T) {
 			errSubstr: "FEED_PROVIDER_URL has an invalid port",
 		},
 		{
+			name: "opt-in does not relax scheme whitelist",
+			cfg: Config{
+				ProviderURL:       "ftp://feed.example.com/v2",
+				AllowInsecureHTTP: true,
+				ProviderAPIKey:    "key-123",
+				PollInterval:      1 * time.Minute,
+			},
+			wantErr:   true,
+			errSubstr: "FEED_PROVIDER_URL must be http(s)",
+		},
+		{
 			name: "parse error does not leak embedded credentials",
 			cfg: Config{
 				ProviderURL:    "https://user:pass@feed.example.com/%zz",
@@ -264,6 +275,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "https://feed.example.com/v2")
 				t.Setenv("FEED_POLL_INTERVAL", "30s")
+				unsetEnv(t, "FEED_ALLOW_INSECURE_HTTP")
 			},
 			wantURL:  "https://feed.example.com/v2",
 			wantPoll: 30 * time.Second,
@@ -273,6 +285,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "https://feed.example.com/v2")
 				unsetEnv(t, "FEED_POLL_INTERVAL")
+				unsetEnv(t, "FEED_ALLOW_INSECURE_HTTP")
 			},
 			wantURL:  "https://feed.example.com/v2",
 			wantPoll: time.Minute,
@@ -282,6 +295,7 @@ func TestParseConfig(t *testing.T) {
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "http://feed.example.com/v2")
 				t.Setenv("FEED_ALLOW_INSECURE_HTTP", "true")
+				unsetEnv(t, "FEED_POLL_INTERVAL")
 			},
 			wantURL:           "http://feed.example.com/v2",
 			wantPoll:          time.Minute,
@@ -291,6 +305,8 @@ func TestParseConfig(t *testing.T) {
 			name: "insecure http opt-in defaults to false",
 			setup: func(t *testing.T) {
 				t.Setenv("FEED_PROVIDER_URL", "https://feed.example.com/v2")
+				unsetEnv(t, "FEED_ALLOW_INSECURE_HTTP")
+				unsetEnv(t, "FEED_POLL_INTERVAL")
 			},
 			wantURL:           "https://feed.example.com/v2",
 			wantPoll:          time.Minute,

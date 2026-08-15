@@ -11,6 +11,9 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
+// Config holds schedule-ingestion settings: the provider endpoint, sync
+// cadence, and the insecure-http dev opt-in. ProviderAPIKey is injected
+// separately by infra/config.Load (ADR-0012).
 type Config struct {
 	ProviderURL string `env:"SCHEDULE_PROVIDER_URL,required"`
 	// AllowInsecureHTTP opts into plain http:// provider URLs for local
@@ -32,7 +35,9 @@ func parseErrorReason(err error) string {
 	if errors.As(err, &ue) && ue.Err != nil {
 		return ue.Err.Error()
 	}
-	return err.Error()
+	// Non-*url.Error failures are unexpected; never fall back to err.Error()
+	// as it may embed the raw URL and any userinfo it carried.
+	return "malformed URL"
 }
 
 func validPort(p string) bool {
@@ -87,13 +92,15 @@ func (c *Config) Validate() error {
 		case invalidURLPort(u):
 			errs = append(errs, "SCHEDULE_PROVIDER_URL has an invalid port")
 		case strings.EqualFold(u.Scheme, "http") && !c.AllowInsecureHTTP:
-			errs = append(errs, "SCHEDULE_PROVIDER_URL must be https; set SCHEDULE_ALLOW_INSECURE_HTTP=true for local http dev")
+			errs = append(errs, "SCHEDULE_PROVIDER_URL must be https; set "+
+				"SCHEDULE_ALLOW_INSECURE_HTTP=true for local http dev")
 		case !strings.EqualFold(u.Scheme, "https") && !strings.EqualFold(u.Scheme, "http"):
 			errs = append(errs, "SCHEDULE_PROVIDER_URL must be http(s)")
 		}
 	}
 	if c.ProviderAPIKey == "" {
-		errs = append(errs, "provider_api_key secret is required (injected by infra/config.Load from /run/secrets/provider_api_key)")
+		errs = append(errs, "provider_api_key secret is required (injected by "+
+			"infra/config.Load from /run/secrets/provider_api_key)")
 	}
 	if c.SyncInterval < time.Second {
 		errs = append(errs, "SCHEDULE_SYNC_INTERVAL must be at least 1s")

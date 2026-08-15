@@ -8,6 +8,8 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
+// Config holds identity/auth settings. SessionTTL is env-driven;
+// JWTSigningKeyED25519 is injected separately by infra/config.Load (ADR-0012).
 type Config struct {
 	SessionTTL time.Duration `env:"SESSION_TTL" envDefault:"24h"`
 	// JWTSigningKeyED25519 is loaded from the Docker secret "jwt_signing_key"
