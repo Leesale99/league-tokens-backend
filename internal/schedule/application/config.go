@@ -49,13 +49,10 @@ func ParseConfig() (*Config, error) {
 }
 
 // Validate checks the env-driven fields and the injected secret without
-// mutating the receiver. Provider URL shape checks live in
-// internal/infra/providerurl (shared with feed). Whitespace policy is
-// split deliberately: ParseConfig tolerates-and-trims at the env boundary
-// (paste errors auto-fix), while Validate rejects padding so hand-built
-// Configs cannot carry an unnormalized URL. Mirrors
-// internal/feed/application/config.go apart from env prefixes — keep in
-// sync (ADR-0012).
+// mutating the receiver; it rejects padded provider URLs (ParseConfig
+// normalizes them at the env boundary). URL shape checks live in
+// internal/infra/providerurl (shared with feed). Mirrors feed's config —
+// keep in sync (ADR-0012).
 func (c *Config) Validate() error {
 	var errs []string
 	if c.ProviderURL != strings.TrimSpace(c.ProviderURL) {
