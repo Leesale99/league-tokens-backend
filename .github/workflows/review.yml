@@ -27,8 +27,14 @@ on:
         required: true
 
 jobs:
+  # No name: here on purpose — GitHub builds check names for jobs in called
+  # workflows as "workflow / caller-job / called-job". The caller in
+  # pr-pipeline.yml already carries the pretty per-focus name (matrix.job_name),
+  # so naming this job the same string made checks read e.g.
+  # "PR Pipeline / Review — Quality / Review — Quality". Falling back to the
+  # job key keeps checks as "PR Pipeline / Review — Quality / review".
+  # inputs.job_name is still consumed below (usage summaries / PR body table).
   review:
-    name: ${{ inputs.job_name }}
     runs-on: ubuntu-latest
     # Read-only on purpose: review jobs only read the diff and emit findings
     # as an artifact. All PR writes (comments, body, labels) happen in the
