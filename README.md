@@ -1,12 +1,48 @@
 # League Tokens Backend
 
-**A balance-safe game engine for a real-world fantasy-league token game — built as a modular monolith in Go.**
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev/dl/)
+[![Status](https://img.shields.io/badge/status-pre--Launch%20scaffolding-yellow?style=flat)](#status)
+[![Architecture](https://img.shields.io/badge/architecture-modular%20monolith-3b82f6?style=flat)](#why-a-modular-monolith)
+
+**A game engine for a real-world fantasy-league token game — built as a modular monolith in Go.**
 
 Free-to-play by design: every player starts with a fixed **50-Currency grant** at registration. Currency buys team **Tokens**, which lock into real-world matches, ride winning streaks, and **burn** into **TB** — the only score that matters. Because every Currency/token balance is persistent, tamper-sensitive game state, the backend enforces one hard rule: **a single `ledger` context is the only authority that can change a balance**, and every mutation commits atomically in one Postgres transaction.
 
 > **Terminology:** **Currency** is the game's **in-game currency — NOT fiat, NOT real money.** It has no external value: it is granted at registration and can never be purchased or redeemed. **Tokens** are per-team tokens bought with Currency. **TB** is the only score that matters (Currency is fuel, never victory). **Ledger** is the sole authority over every balance write.
 
-> **Status:** Architecture is fully settled in `docs/` (12 ADRs + system design spec). Code is at early scaffolding — contexts are laid out per ADR-0008 with config, and the engine/ledger/API implementation is being built out.
+> **Status:** Architecture is fully settled in `docs/` (12 ADRs + system design spec). Code is at early scaffolding — contexts are laid out per ADR-0008, and the engine/ledger/API implementation is being built out. Tracked in [issue #1](https://github.com/Leesale99/league-tokens-backend/issues/1).
+
+## Contents
+
+- [The game in one loop](#the-game-in-one-loop)
+- [Why a modular monolith?](#why-a-modular-monolith)
+- [Architecture at a glance](#architecture-at-a-glance)
+- [Bounded contexts](#bounded-contexts)
+- [Repository layout](#repository-layout)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [CI/CD](#cicd)
+- [Documentation map](#documentation-map)
+- [Roadmap to 1.0](#roadmap-to-10)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## The game in one loop
+
+```mermaid
+flowchart LR
+    A["<b>Register</b><br/>+50 Currency"] --> B["<b>Buy Tokens</b><br/>(spend Currency)"]
+    B --> C["<b>Lock a ride</b><br/>(stake Tokens)"]
+    C --> D{"Match resolves"}
+    D -- "win" --> E["<b>Streak</b>: acc grows<br/>ride again or Burn"]
+    D -- "loss" --> F["<b>Burn on loss</b>:<br/>tokens destroyed"]
+    E --> G["<b>Burn</b> (cash out)"]
+    G --> H["<b>TB</b> (score) +<br/>Currency stake-back"]
+```
+
+Two things stay true across every loop: **Currency is fuel** — a closed loop you spend to buy Tokens and recover on a winning burn (stake-back at `base_at_lock × tokens`), never a score. **TB is the only score** — it ranks both the **Player Championship** and the **Team Championship**; Currency never ranks.
 
 ---
 
@@ -87,6 +123,36 @@ Each context follows the same internal shape: `domain/` (entities, aggregates, i
 
 ---
 
+## Repository layout
+
+```
+.
+├── cmd/server/                 # entry point → the composer (wires contexts, ADR-0008)
+├── internal/
+│   ├── identity/               # users, sessions, auth (Ed25519 ×2, Argon2id)
+│   ├── schedule/               # raw feed rows: teams, rounds, matches, results
+│   ├── game/                   # engine: rides, acc, Team.base
+│   ├── ledger/                 # sole balance authority: double-entry journal
+│   ├── rankings/               # read-model projections (boards, TB)
+│   ├── market/                 # dormant at Launch
+│   ├── feed/                   # stateless upstream poll adapter
+│   ├── http/                   # edge: router, middlewares, SSE broker, problem+json
+│   └── infra/                  # shared kernel
+│       ├── bus/ scheduler/ telemetry/ db/ dec/ config/ apperr/ events/
+│       └── …
+├── docs/
+│   ├── adr/                    # 0001–0012 — every settled decision
+│   ├── specs/                  # system design · game engine · game design · glossary
+│   ├── diagrams/               # architecture diagrams
+│   └── agents/                 # triage + knowledge-base conventions
+├── .github/workflows/          # CI/CD (test, lint, govulncheck, deploy)
+├── scripts/issue-workflow/     # agent issue-workflow tooling
+├── CONTEXT.md                  # ubiquitous-language glossary + ADR index (read first)
+└── compose.env.example         # environment schema (secrets via Docker secrets)
+```
+
+---
+
 ## Tech stack
 
 - **Go 1.26** — one binary, `cmd/server/main.go` as the only composer
@@ -96,11 +162,19 @@ Each context follows the same internal shape: `domain/` (entities, aggregates, i
 - **Caddy** — TLS (auto-ACME), HSTS, per-IP rate limiting, SSE streaming
 - **Cloudflare** free tier — edge cache for hot GETs, WAF, DDoS
 - **Grafana Cloud** — Prometheus metrics + Tempo traces (OTLP), `slog` JSON logs
-- **Docker Compose** on a VPS — `backend` / `postgres` / `caddy` / backup sidecar; secrets via Docker secrets
+- **Docker Compose** on a VPS — `backend` / `postgres` / `caddy` / backup sidecar; secrets via Docker secrets (ADR-0006)
 
 ---
 
 ## Getting started
+
+### Prerequisites
+
+- **Go 1.26+**
+- **Docker** (for Postgres and the Compose stack)
+- **[golangci-lint](https://golangci-lint.run/)** v2.12.2 (the version CI pins)
+
+### Build & run
 
 ```bash
 # 1. Clone and enter
@@ -111,18 +185,24 @@ go test ./...
 go vet ./...
 golangci-lint run          # gosec, govet, errcheck, staticcheck, bodyclose …
 
-# 3. Build and run
+# 3. Build
 go build -o server ./cmd/server
-./server                   # loads env config, then starts (scaffolding stage)
+./server                   # placeholder entry point (scaffolding stage)
 ```
 
-Configuration is 12-factor env-driven (`caarlos0/env`); see [`compose.env.example`](compose.env.example) for the full schema. Secrets are read from mounted files at `/run/secrets/*` in Docker — never env vars, never committed.
+> The entry point is a scaffolding stub — `cmd/server/main.go` currently prints a
+> placeholder. Per ADR-0008 it will become the single **composer** that wires all
+> contexts and starts migrations, the scheduler, and the HTTP/SSE edge.
 
 ### Local Postgres (when you need one)
 
 ```bash
 docker run --rm -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16-alpine
 ```
+
+### Configuration
+
+12-factor, env-driven (`caarlos0/env`); see [`compose.env.example`](compose.env.example) for the full schema. Secrets are read from mounted files at `/run/secrets/*` in Docker — never env vars, never committed (ADR-0012).
 
 ---
 
@@ -152,7 +232,9 @@ Rule of thumb: read an ADR before touching its area; only fall through to the bi
 
 ---
 
-## Roadmap to 1.0 (ADR-0009 — staged, traffic-holding checkpoints)
+## Roadmap to 1.0
+
+Staged, traffic-holding checkpoints from ADR-0009:
 
 | Stage | Change | Trigger |
 |---|---|---|
@@ -162,6 +244,12 @@ Rule of thumb: read an ADR before touching its area; only fall through to the bi
 | 4 | Extract `game` (partition by `season_id`, single-writer per season) | game CPU saturates |
 | 5 | SSE fan-out via Redis Pub/Sub | SSE per-instance budget crossed |
 | 6 | Managed K8s + multi-AZ Postgres, blue/green, managed WAF, IdP | cost beats single VPS |
+
+---
+
+## Contributing
+
+Docs-first: read `CONTEXT.md` → the relevant `docs/adr/` → specs (see [Documentation map](#documentation-map)). Work is tracked as GitHub issues with triage labels (`needs-triage` → `ready-for-agent` / `ready-for-human`); agent conventions live in `docs/agents/`. Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
