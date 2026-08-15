@@ -197,7 +197,8 @@ go build -o server ./cmd/server
 ### Local Postgres (when you need one)
 
 ```bash
-docker run --rm -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16-alpine
+docker run --rm -d -p 127.0.0.1:5432:5432 \
+  -e POSTGRES_PASSWORD="$(openssl rand -hex 16)" postgres:16-alpine
 ```
 
 ### Configuration
