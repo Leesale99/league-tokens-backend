@@ -14,7 +14,7 @@ import (
 // cadence, and the insecure-http dev opt-in. ProviderAPIKey is injected
 // separately by infra/config.Load (ADR-0012).
 type Config struct {
-	ProviderURL string `env:"SCHEDULE_PROVIDER_URL,required"`
+	ProviderURL string `env:"SCHEDULE_PROVIDER_URL,required,notEmpty"`
 	// AllowInsecureHTTP opts into plain http:// provider URLs for local
 	// development against a mock provider. Defaults to false: the provider API
 	// key is a Docker secret and must never travel in cleartext (ADR-0007).
@@ -36,6 +36,10 @@ func ParseConfig() (*Config, error) {
 	if err := env.Parse(&cfg); err != nil {
 		return nil, fmt.Errorf("parse schedule config: %w", err)
 	}
+	// Normalize so the stored value is exactly what was validated; a pasted
+	// trailing newline or leading space would otherwise fail at dial time in
+	// the scheduler adapter (#34) after validation reported it valid.
+	cfg.ProviderURL = strings.TrimSpace(cfg.ProviderURL)
 	return &cfg, nil
 }
 

@@ -74,6 +74,12 @@ func Load() (*ComposerConfig, error) {
 		return nil, err
 	}
 
+	if feed.AllowInsecureHTTP || schedule.AllowInsecureHTTP {
+		slog.Warn("provider_api_key will travel in cleartext: insecure-http opt-in enabled (dev only, ADR-0007)",
+			"feed_allow_insecure_http", feed.AllowInsecureHTTP,
+			"schedule_allow_insecure_http", schedule.AllowInsecureHTTP)
+	}
+
 	return &ComposerConfig{
 		Postgres:  postgres,
 		HTTP:      httpCfg,

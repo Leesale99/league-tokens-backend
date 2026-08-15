@@ -164,6 +164,25 @@ func TestConfigValidate(t *testing.T) {
 			errSubstr: "FEED_POLL_INTERVAL must be at least 1s",
 		},
 		{
+			name: "exactly one second poll interval accepted",
+			cfg: Config{
+				ProviderURL:    "https://feed.example.com/v2",
+				ProviderAPIKey: "key-123",
+				PollInterval:   time.Second,
+			},
+			wantErr: false,
+		},
+		{
+			name: "one second minus a nanosecond rejected",
+			cfg: Config{
+				ProviderURL:    "https://feed.example.com/v2",
+				ProviderAPIKey: "key-123",
+				PollInterval:   time.Second - time.Nanosecond,
+			},
+			wantErr:   true,
+			errSubstr: "FEED_POLL_INTERVAL must be at least 1s",
+		},
+		{
 			name: "out-of-range port rejected",
 			cfg: Config{
 				ProviderURL:    "https://feed.example.com:99999/v2",
@@ -231,7 +250,7 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
-func TestConfigValidate_MultipleErrors(t *testing.T) {
+func TestConfigValidateMultipleErrors(t *testing.T) {
 	// All three checks fire at once (empty URL, missing key, zero interval) so
 	// the strings.Join accumulation branch is exercised, not just single-error
 	// cases.
@@ -306,6 +325,16 @@ func TestParseConfig(t *testing.T) {
 			},
 			wantErr:   true,
 			errSubstr: "parse feed config",
+		},
+		{
+			name: "provider URL whitespace normalized",
+			setup: func(t *testing.T) {
+				t.Setenv("FEED_PROVIDER_URL", "  https://feed.example.com/v2\n")
+				t.Setenv("FEED_POLL_INTERVAL", "1m")
+				unsetEnv(t, "FEED_ALLOW_INSECURE_HTTP")
+			},
+			wantURL:  "https://feed.example.com/v2",
+			wantPoll: time.Minute,
 		},
 		{
 			name: "valid",

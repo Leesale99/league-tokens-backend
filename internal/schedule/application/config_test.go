@@ -164,6 +164,25 @@ func TestConfigValidate(t *testing.T) {
 			errSubstr: "SCHEDULE_SYNC_INTERVAL must be at least 1s",
 		},
 		{
+			name: "exactly one second sync interval accepted",
+			cfg: Config{
+				ProviderURL:    "https://api.example.com/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   time.Second,
+			},
+			wantErr: false,
+		},
+		{
+			name: "one second minus a nanosecond rejected",
+			cfg: Config{
+				ProviderURL:    "https://api.example.com/v1",
+				ProviderAPIKey: "key-123",
+				SyncInterval:   time.Second - time.Nanosecond,
+			},
+			wantErr:   true,
+			errSubstr: "SCHEDULE_SYNC_INTERVAL must be at least 1s",
+		},
+		{
 			name: "out-of-range port rejected",
 			cfg: Config{
 				ProviderURL:    "https://api.example.com:99999/v1",
@@ -231,7 +250,7 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
-func TestConfigValidate_MultipleErrors(t *testing.T) {
+func TestConfigValidateMultipleErrors(t *testing.T) {
 	// All three checks fire at once (empty URL, missing key, zero interval) so
 	// the strings.Join accumulation branch is exercised, not just single-error
 	// cases.
@@ -306,6 +325,16 @@ func TestParseConfig(t *testing.T) {
 			},
 			wantErr:   true,
 			errSubstr: "parse schedule config",
+		},
+		{
+			name: "provider URL whitespace normalized",
+			setup: func(t *testing.T) {
+				t.Setenv("SCHEDULE_PROVIDER_URL", "  https://api.example.com/v1\n")
+				t.Setenv("SCHEDULE_SYNC_INTERVAL", "5m")
+				unsetEnv(t, "SCHEDULE_ALLOW_INSECURE_HTTP")
+			},
+			wantURL:  "https://api.example.com/v1",
+			wantSync: 5 * time.Minute,
 		},
 		{
 			name: "valid",

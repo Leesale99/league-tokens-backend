@@ -16,5 +16,8 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: cfg.Telemetry.LogLevelSlog(),
 	})))
-	slog.Info("starting with valid config", "service", cfg.Telemetry.ServiceName)
+	// Self-describing even when LOG_LEVEL=warn/error would suppress an Info line.
+	slog.Info("starting with valid config",
+		"service", cfg.Telemetry.ServiceName,
+		"log_level", cfg.Telemetry.LogLevelSlog().String())
 }
