@@ -1,0 +1,267 @@
+package log
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"log/slog"
+	"strings"
+	"testing"
+	"testing/slogtest"
+	"time"
+)
+
+// captureJSON returns a JSON logger built on a context-decorated handler
+// (bytes.Buffer + NewHandler(FormatJSON) + NewContextHandler) writing into
+// buf.
+func captureJSON(opts ContextHandlerOptions) (*bytes.Buffer, *slog.Logger) {
+	var buf bytes.Buffer
+	logger := slog.New(NewContextHandler(NewHandler(slog.LevelDebug, FormatJSON, &buf), opts))
+	return &buf, logger
+}
+
+// parseLines parses each non-empty JSON line of src into a map.
+func parseLines(t *testing.T, src []byte) []map[string]any {
+	t.Helper()
+	var ms []map[string]any
+	for _, line := range bytes.Split(src, []byte{'\n'}) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal(line, &m); err != nil {
+			t.Fatalf("invalid JSON line %q: %v", line, err)
+		}
+		ms = append(ms, m)
+	}
+	return ms
+}
+
+// correlationCtx returns a context carrying all three correlation fields.
+func correlationCtx() context.Context {
+	return WithSubjectID(WithTraceID(WithRequestID(context.Background(), "req-123"), "trace-abc"), 42)
+}
+
+// TestContextHandlerInjectionTable drives the inject/omit matrix: fields
+// present in ctx are injected with their exact values, absent fields are
+// omitted entirely (the emitted line lacks the key, not just the value).
+func TestContextHandlerInjectionTable(t *testing.T) {
+	tests := []struct {
+		name       string
+		ctx        context.Context
+		extractor  func(context.Context) string
+		wantKeys   map[string]any
+		absentKeys []string
+	}{
+		{
+			name:     "all three present",
+			ctx:      correlationCtx(),
+			wantKeys: map[string]any{requestIDAttr: "req-123", subjectIDAttr: float64(42), traceIDAttr: "trace-abc"},
+		},
+		{
+			name:       "none present",
+			ctx:        context.Background(),
+			absentKeys: []string{requestIDAttr, subjectIDAttr, traceIDAttr},
+		},
+		{
+			name:       "request and subject only",
+			ctx:        WithSubjectID(WithRequestID(context.Background(), "req-1"), 7),
+			wantKeys:   map[string]any{requestIDAttr: "req-1", subjectIDAttr: float64(7)},
+			absentKeys: []string{traceIDAttr},
+		},
+		{
+			name:       "trace only via extractor",
+			ctx:        context.Background(),
+			extractor:  func(context.Context) string { return "span-1" },
+			wantKeys:   map[string]any{traceIDAttr: "span-1"},
+			absentKeys: []string{requestIDAttr, subjectIDAttr},
+		},
+		{
+			name:       "empty extractor result counts as absent",
+			ctx:        context.Background(),
+			extractor:  func(context.Context) string { return "" },
+			absentKeys: []string{requestIDAttr, subjectIDAttr, traceIDAttr},
+		},
+		{
+			name:       "zero subject id is present",
+			ctx:        WithSubjectID(context.Background(), 0),
+			wantKeys:   map[string]any{subjectIDAttr: float64(0)},
+			absentKeys: []string{requestIDAttr, traceIDAttr},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf, logger := captureJSON(ContextHandlerOptions{TraceIDExtractor: tt.extractor})
+			logger.InfoContext(tt.ctx, "line")
+
+			ms := parseLines(t, buf.Bytes())
+			if len(ms) != 1 {
+				t.Fatalf("got %d lines, want 1: %s", len(ms), buf.String())
+			}
+			for key, want := range tt.wantKeys {
+				if got := ms[0][key]; got != want {
+					t.Errorf("%s = %v, want %v", key, got, want)
+				}
+			}
+			for _, key := range tt.absentKeys {
+				if _, ok := ms[0][key]; ok {
+					t.Errorf("absent field %q emitted: %s", key, buf.String())
+				}
+			}
+		})
+	}
+}
+
+// TestContextHandlerTraceKeyWinsOverExtractor asserts the B-2 ordering:
+// a context trace id always beats the extractor fallback.
+func TestContextHandlerTraceKeyWinsOverExtractor(t *testing.T) {
+	buf, logger := captureJSON(ContextHandlerOptions{
+		TraceIDExtractor: func(context.Context) string { return "from-span" },
+	})
+	logger.InfoContext(WithTraceID(context.Background(), "from-key"), "line")
+
+	ms := parseLines(t, buf.Bytes())
+	if got := ms[0][traceIDAttr]; got != "from-key" {
+		t.Errorf("trace_id = %v, want %q (key first per B-2)", got, "from-key")
+	}
+}
+
+// TestContextHandlerDuplicateKeyGuard asserts a record that already carries
+// an owned key keeps its own value and is not duplicated (go1.26 built-ins
+// no longer deduplicate keys), while the other fields still inject.
+func TestContextHandlerDuplicateKeyGuard(t *testing.T) {
+	buf, logger := captureJSON(ContextHandlerOptions{})
+	logger.InfoContext(correlationCtx(), "line", requestIDAttr, "preset")
+
+	out := buf.String()
+	if got := strings.Count(out, `"`+requestIDAttr+`"`); got != 1 {
+		t.Errorf("%q appears %d times, want exactly 1: %s", requestIDAttr, got, out)
+	}
+	if !strings.Contains(out, `"request_id":"preset"`) {
+		t.Errorf("pre-set request_id not preserved: %s", out)
+	}
+	if strings.Contains(out, "req-123") {
+		t.Errorf("ctx request_id injected despite pre-set record attr: %s", out)
+	}
+
+	ms := parseLines(t, buf.Bytes())
+	if got := ms[0][subjectIDAttr]; got != float64(42) {
+		t.Errorf("subject_id = %v, want 42", got)
+	}
+	if got := ms[0][traceIDAttr]; got != "trace-abc" {
+		t.Errorf("trace_id = %v, want %q", got, "trace-abc")
+	}
+}
+
+// TestContextHandlerChildLoggers asserts logger.With/WithGroup children keep
+// injecting (options preserved through WithAttrs/WithGroup). With the go1.26
+// stdlib handlers, record attrs — including the injected ones — are emitted
+// inside groups opened by WithGroup, so the grouped line is asserted
+// location-agnostically while the With child is checked top-level.
+func TestContextHandlerChildLoggers(t *testing.T) {
+	buf, logger := captureJSON(ContextHandlerOptions{})
+	ctx := correlationCtx()
+
+	logger.With("static", "attr").InfoContext(ctx, "with child")
+	logger.WithGroup("g").With("k", "v").InfoContext(ctx, "grouped child")
+
+	ms := parseLines(t, buf.Bytes())
+	if len(ms) != 2 {
+		t.Fatalf("got %d lines, want 2: %s", len(ms), buf.String())
+	}
+
+	// With child: handler attrs and injected fields all at top level.
+	m0 := ms[0]
+	if got := m0["static"]; got != "attr" {
+		t.Errorf("With attr lost: %v", got)
+	}
+	for key, want := range map[string]any{
+		requestIDAttr: "req-123", subjectIDAttr: float64(42), traceIDAttr: "trace-abc",
+	} {
+		if got := m0[key]; got != want {
+			t.Errorf("With child %s = %v, want %v", key, got, want)
+		}
+	}
+
+	// WithGroup child: the group is intact, and the injected fields are
+	// present in the emitted line (nested under g by the stdlib handler).
+	g, ok := ms[1]["g"].(map[string]any)
+	if !ok {
+		t.Fatalf("group g missing or not a map: %s", buf.String())
+	}
+	if got := g["k"]; got != "v" {
+		t.Errorf("group attr k = %v, want %q", got, "v")
+	}
+	for key, want := range map[string]any{
+		requestIDAttr: "req-123", subjectIDAttr: float64(42), traceIDAttr: "trace-abc",
+	} {
+		if got := g[key]; got != want {
+			t.Errorf("WithGroup child %s = %v, want %v", key, got, want)
+		}
+	}
+}
+
+// TestContextHandlerService asserts the service attr is emitted exactly when
+// ServiceName is configured.
+func TestContextHandlerService(t *testing.T) {
+	buf, logger := captureJSON(ContextHandlerOptions{ServiceName: "league-tokens-backend"})
+	logger.InfoContext(context.Background(), "line")
+
+	ms := parseLines(t, buf.Bytes())
+	if got := ms[0][serviceAttr]; got != "league-tokens-backend" {
+		t.Errorf("service = %v, want %q", got, "league-tokens-backend")
+	}
+
+	buf2, logger2 := captureJSON(ContextHandlerOptions{})
+	logger2.InfoContext(context.Background(), "line")
+	ms2 := parseLines(t, buf2.Bytes())
+	if _, ok := ms2[0][serviceAttr]; ok {
+		t.Errorf("service emitted with empty ServiceName: %s", buf2.String())
+	}
+}
+
+// TestContextHandlerNilCtx asserts Handle(nil, r) never panics: nil ctx is
+// treated as background (no keys, extractor runs, service still injected).
+func TestContextHandlerNilCtx(t *testing.T) {
+	var buf bytes.Buffer
+	h := NewContextHandler(NewHandler(slog.LevelDebug, FormatJSON, &buf), ContextHandlerOptions{
+		ServiceName:      "svc",
+		TraceIDExtractor: func(context.Context) string { return "no-panic" },
+	})
+	r := slog.NewRecord(time.Time{}, slog.LevelInfo, "nil ctx line", 0)
+
+	// Pass nil through a variable: the runtime value is nil (exercising the
+	// nil-ctx guard) without tripping staticcheck SA1012 on a literal nil.
+	var nilCtx context.Context
+	if err := h.Handle(nilCtx, r); err != nil {
+		t.Fatalf("Handle(nil, r) error = %v", err)
+	}
+
+	ms := parseLines(t, buf.Bytes())
+	if len(ms) != 1 {
+		t.Fatalf("got %d lines, want 1: %s", len(ms), buf.String())
+	}
+	if got := ms[0]["msg"]; got != "nil ctx line" {
+		t.Errorf("msg = %v, want %q", got, "nil ctx line")
+	}
+	if got := ms[0][serviceAttr]; got != "svc" {
+		t.Errorf("service = %v, want %q", got, "svc")
+	}
+	if got := ms[0][traceIDAttr]; got != "no-panic" {
+		t.Errorf("trace_id = %v, want %q", got, "no-panic")
+	}
+}
+
+// TestContextHandlerSlogtest runs the stdlib handler-contract suite against
+// the decorator (all four methods must be forwarded correctly).
+func TestContextHandlerSlogtest(t *testing.T) {
+	var buf bytes.Buffer
+	h := NewContextHandler(NewHandler(slog.LevelDebug, FormatJSON, &buf), ContextHandlerOptions{})
+
+	err := slogtest.TestHandler(h, func() []map[string]any {
+		return parseLines(t, buf.Bytes())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
