@@ -144,6 +144,11 @@ func (c *TelemetryConfig) Validate() error {
 	if c.ServiceName == "" {
 		errs = append(errs, "SERVICE_NAME must not be empty")
 	}
+	// Same bounds as correlation ids (ADR-0011): terminal-escape safety for
+	// dev text logs, log-amplification cap. Single source: log.ValidCorrelationID.
+	if c.ServiceName != "" && !log.ValidCorrelationID(c.ServiceName) {
+		errs = append(errs, "SERVICE_NAME must be at most 128 bytes and contain no control characters")
+	}
 	if len(errs) > 0 {
 		return fmt.Errorf("telemetry config: %s", strings.Join(errs, "; "))
 	}

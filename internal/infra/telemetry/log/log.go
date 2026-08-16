@@ -5,15 +5,18 @@
 //
 // # Field ownership
 //
-// The five names code, op, subject_id, trace_id, request_id are owned by
-// this package — call sites must not re-add them as attrs. request_id,
-// subject_id, and trace_id are injected from ctx by ContextHandler; code
-// and op are call-site attrs via Code()/Op() (per-line semantics — not
-// auto-injectable), drawn from the ADR-0011 table until the error-model
-// issue ships apperr/codes.go. The decorator drops owned keys re-added via
-// logger.With (ContextHandler.WithAttrs). The slog built-ins time, level,
-// msg, source are reserved — go1.26 no longer filters collisions, so a
-// duplicate key would be emitted.
+// The six names code, op, service, subject_id, trace_id, request_id are
+// owned by this package — call sites must not re-add them as attrs.
+// request_id, subject_id, and trace_id are injected from ctx by
+// ContextHandler; service is injected by ContextHandler when ServiceName is
+// set (SERVICE_NAME); code and op are call-site attrs via Code()/Op()
+// (per-line semantics — not auto-injectable), drawn from the ADR-0011 table
+// until the error-model issue ships apperr/codes.go. The decorator drops
+// owned keys re-added via logger.With (ContextHandler.WithAttrs) — even
+// when the ctx field is absent, so logger.With must not be used to set
+// correlation values. The slog built-ins time, level, msg, source are
+// reserved — go1.26 no longer filters collisions, so a duplicate key would
+// be emitted.
 //
 // # op convention
 //

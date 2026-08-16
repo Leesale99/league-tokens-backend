@@ -204,6 +204,27 @@ func TestLoad_InvalidLogFormat(t *testing.T) {
 	if err == nil {
 		t.Fatal("Load() expected error for invalid LOG_FORMAT, got nil")
 	}
+	if !strings.Contains(err.Error(), "LOG_FORMAT") {
+		t.Errorf("Load() error = %q, want it to mention LOG_FORMAT", err)
+	}
+}
+
+func TestLoad_ValidJSONFormat(t *testing.T) {
+	origDir := secretsDir
+	secretsDir = t.TempDir()
+	defer func() { secretsDir = origDir }()
+
+	setValidEnv(t)
+	t.Setenv("LOG_FORMAT", "json")
+	createSecrets(t, secretsDir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Telemetry.LogFormat != "json" {
+		t.Errorf("Telemetry.LogFormat = %q, want %q (production branch)", cfg.Telemetry.LogFormat, "json")
+	}
 }
 
 func TestLoad_InvalidHTTPAddr(t *testing.T) {
@@ -280,6 +301,21 @@ func TestTelemetryLogLevelSlog(t *testing.T) {
 	}
 }
 
+func TestTelemetryValidate_LogFormat(t *testing.T) {
+	for _, format := range []string{"text", "json"} {
+		t.Run(format, func(t *testing.T) {
+			cfg := &TelemetryConfig{
+				ServiceName: "league-tokens-test",
+				LogLevel:    "info",
+				LogFormat:   format,
+			}
+			if err := cfg.Validate(); err != nil {
+				t.Errorf("Validate() with LOG_FORMAT=%s returned error: %v", format, err)
+			}
+		})
+	}
+}
+
 func TestTelemetryValidate_InvalidLogFormat(t *testing.T) {
 	cfg := &TelemetryConfig{
 		ServiceName: "league-tokens-test",
@@ -292,5 +328,36 @@ func TestTelemetryValidate_InvalidLogFormat(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "LOG_FORMAT") {
 		t.Errorf("Validate() error = %q, want it to mention LOG_FORMAT", err)
+	}
+}
+
+func TestTelemetryValidate_InvalidServiceName(t *testing.T) {
+	for _, name := range []string{
+		strings.Repeat("a", 129), // over the 128-byte cap
+		"svc\x1b[31mred\x1b[0m",  // terminal escape
+	} {
+		t.Run("invalid", func(t *testing.T) {
+			cfg := &TelemetryConfig{
+				ServiceName: name,
+				LogLevel:    "info",
+				LogFormat:   "text",
+			}
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatalf("Validate() expected error for SERVICE_NAME %q, got nil", name)
+			}
+			if !strings.Contains(err.Error(), "SERVICE_NAME") {
+				t.Errorf("Validate() error = %q, want it to mention SERVICE_NAME", err)
+			}
+		})
+	}
+	// Boundary: exactly 128 bytes is valid.
+	cfg := &TelemetryConfig{
+		ServiceName: strings.Repeat("a", 128),
+		LogLevel:    "info",
+		LogFormat:   "text",
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() rejected 128-byte SERVICE_NAME: %v", err)
 	}
 }

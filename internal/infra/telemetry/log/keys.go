@@ -5,11 +5,12 @@ import "context"
 // maxCorrelationIDLen bounds request/trace ids at 128 bytes.
 const maxCorrelationIDLen = 128
 
-// validCorrelationID reports whether id may carry correlation: non-empty
+// ValidCorrelationID reports whether id may carry correlation: non-empty
 // (empty-string = absent), ≤ maxCorrelationIDLen bytes, no control chars
-// (terminal-escape safety for dev text logs). Shared by setters and the
-// injection path, so a hostile value is never stored nor emitted.
-func validCorrelationID(id string) bool {
+// (terminal-escape safety for dev text logs). Shared by the setters, the
+// decorator's injection path, and TelemetryConfig.Validate (SERVICE_NAME),
+// so a hostile value is never stored, emitted, nor accepted at boot.
+func ValidCorrelationID(id string) bool {
 	if id == "" || len(id) > maxCorrelationIDLen {
 		return false
 	}
@@ -31,7 +32,7 @@ type traceIDKey struct{}
 // the correlation bounds). Called by #8's req_id middleware, which should
 // prefer server-generated ids and validate client-supplied headers first.
 func WithRequestID(ctx context.Context, id string) context.Context {
-	if !validCorrelationID(id) {
+	if !ValidCorrelationID(id) {
 		return ctx
 	}
 	return context.WithValue(ctx, requestIDKey{}, id)
@@ -59,7 +60,7 @@ func SubjectID(ctx context.Context) (int64, bool) {
 // correlation bounds). The ctx value wins over the extractor; #8's
 // middleware populates it and #42 adds the span-context fallback.
 func WithTraceID(ctx context.Context, id string) context.Context {
-	if !validCorrelationID(id) {
+	if !ValidCorrelationID(id) {
 		return ctx
 	}
 	return context.WithValue(ctx, traceIDKey{}, id)

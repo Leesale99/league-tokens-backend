@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -320,6 +321,73 @@ func TestContextHandlerNilCtx(t *testing.T) {
 	if got := ms[0][traceIDAttr]; got != "no-panic" {
 		t.Errorf("trace_id = %v, want %q", got, "no-panic")
 	}
+}
+
+// TestNewContextHandlerNilHandler asserts a nil wrapped handler fails fast
+// at construction instead of nil-dereferencing at the first log call site.
+func TestNewContextHandlerNilHandler(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("NewContextHandler(nil, ...) did not panic")
+		}
+	}()
+	NewContextHandler(nil, ContextHandlerOptions{})
+}
+
+// TestContextHandlerServiceBounds asserts a ServiceName that fails the
+// correlation bounds is treated as absent at injection, matching the
+// request/trace id policy (belt-and-suspenders on top of config Validate).
+func TestContextHandlerServiceBounds(t *testing.T) {
+	for _, name := range []string{
+		strings.Repeat("x", maxCorrelationIDLen+1), // over-long
+		"svc\x1b[31mred\x1b[0m",                    // control chars
+	} {
+		t.Run("invalid", func(t *testing.T) {
+			buf, logger := captureJSON(ContextHandlerOptions{ServiceName: name})
+			logger.InfoContext(context.Background(), "line")
+
+			ms := parseLines(t, buf.Bytes())
+			if _, ok := ms[0][serviceAttr]; ok {
+				t.Errorf("service %q emitted despite failing correlation bounds", name)
+			}
+		})
+	}
+}
+
+// BenchmarkContextHandlerHandle quantifies the per-record cost of the
+// decorator relative to the raw handler (finding: clone + AddAttrs when
+// correlation fields are present).
+func BenchmarkContextHandlerHandle(b *testing.B) {
+	raw := NewHandler(slog.LevelDebug, FormatJSON, io.Discard)
+	decorated := NewContextHandler(raw, ContextHandlerOptions{})
+	ctxFull := correlationCtx()
+	r := slog.NewRecord(time.Time{}, slog.LevelInfo, "bench line", 0)
+	r.AddAttrs(slog.String("static", "attr"))
+
+	b.Run("raw/empty-ctx", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if err := raw.Handle(context.Background(), r); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("decorated/empty-ctx", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if err := decorated.Handle(context.Background(), r); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("decorated/full-ctx", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if err := decorated.Handle(ctxFull, r); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
 
 // TestContextHandlerSlogtest runs the stdlib handler-contract suite against
