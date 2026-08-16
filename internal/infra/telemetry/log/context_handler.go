@@ -5,10 +5,8 @@ import (
 	"log/slog"
 )
 
-// Emitted attr names owned by the context decorator: the three ADR-0011
-// correlation fields plus the per-record service name (F-4). The package
-// doc's field ownership rule covers them — call sites must not re-add these
-// as attrs.
+// Attr names owned by the decorator — call sites must not re-add them
+// (package doc: Field ownership).
 const (
 	requestIDAttr = "request_id"
 	subjectIDAttr = "subject_id"
@@ -19,55 +17,36 @@ const (
 // ContextHandlerOptions configures the context-decorating handler.
 type ContextHandlerOptions struct {
 	// ServiceName, when non-empty, is injected as a "service" attr on every
-	// record the handler emits (F-4: per-record service name). Task 04
-	// passes TelemetryConfig.ServiceName here.
+	// record the handler emits.
 	ServiceName string
 
-	// TraceIDExtractor derives a trace id from ctx when the context carries
-	// no usable WithTraceID value — decision B-2: key first, extractor second;
-	// key absent/out-of-bounds and extractor output failing the correlation
-	// bounds → the field is not emitted. #42 wires
-	// trace.SpanContextFromContext(ctx) here without rework. Nil disables
-	// the fallback.
+	// TraceIDExtractor derives a trace id from ctx when no usable
+	// WithTraceID value is present. Nil disables it; #42 wires
+	// trace.SpanContextFromContext here.
 	TraceIDExtractor func(context.Context) string
 }
 
-// ContextHandler decorates h so every record it emits carries the ADR-0011
-// correlation fields present in the record's context: request_id and
-// subject_id (set by #8/#11 middlewares via WithRequestID/WithSubjectID)
-// and trace_id (key first, then TraceIDExtractor). When ServiceName is
-// set, a "service" attr is added too. Fields absent from ctx — including
-// empty/out-of-bounds request/trace ids, per the empty-string = absent
-// policy — are not emitted; fields the record already carries are not
-// injected again — go1.26 built-in handlers no longer deduplicate keys, so
-// a repeat would emit duplicate JSON keys.
+// ContextHandler decorates a slog.Handler so every record it emits carries
+// the ADR-0011 correlation fields present in the record's context:
+// request_id and subject_id (set by the #8/#11 middlewares), trace_id (ctx
+// value first, then TraceIDExtractor), and "service" when ServiceName is
+// set. Values absent from ctx are not emitted; keys the record already
+// carries are not injected again (go1.26 built-in handlers no longer
+// deduplicate keys, so a repeat would emit a duplicate) — WithAttrs drops
+// owned keys re-added via logger.With.
 //
-// It implements slog.Handler by forwarding all four methods. Enabled and
-// Handle delegate to the wrapped handler (which does the formatting);
-// WithAttrs and WithGroup wrap the wrapped handler's result and preserve
-// the options, so child loggers keep injecting. Injection happens on a
-// clone of the record in Handle, so the injected fields become ordinary
-// record attrs emitted by the wrapped handler after its built-ins.
-//
-// Group caveat (verified against go1.26 stdlib): the built-in JSON/Text
-// handlers emit record attrs inside the groups opened by WithGroup
-// (handler.go appendNonBuiltIns wraps them in openGroups), so a WithGroup
-// child logger nests the injected fields under the group. That is how
-// every record attr behaves with an open group — blocky's contextHandler
-// documents the same — so injection still happens; if the fields must
-// stay top-level, do not call WithGroup on a context-aware logger.
-//
-// The decorator never panics on a nil ctx (treated as context.Background(),
-// as the stdlib Logger does). The constructor takes a freshly built handler
-// (e.g. NewHandler) — never one captured from slog.Default(), which would
-// deadlock a subsequent SetDefault (golang/go#61892).
+// Child loggers (With/WithGroup) keep injecting. With an open group the
+// injected attrs nest under it like any record attr — do not use WithGroup
+// if they must stay top-level. A nil ctx never panics.
 type ContextHandler struct {
 	next slog.Handler
 	opts ContextHandlerOptions
 }
 
 // NewContextHandler returns a handler that decorates h with context-value
-// injection.
+// injection. h must be a freshly built handler (e.g. NewHandler) — never one
+// captured from slog.Default(), which would deadlock a subsequent
+// slog.SetDefault (golang/go#61892).
 func NewContextHandler(h slog.Handler, opts ContextHandlerOptions) *ContextHandler {
 	return &ContextHandler{next: h, opts: opts}
 }
@@ -87,64 +66,51 @@ func (c *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 		ctx = context.Background()
 	}
 
-	var attrs []slog.Attr
-	appendIfAbsent := func(key string, a slog.Attr) {
-		if recordHasKey(r, key) {
-			return
-		}
-		attrs = append(attrs, a)
+	// Inject present values unless the record already carries the key —
+	// go1.26 built-in handlers no longer deduplicate, so a repeat would
+	// emit a duplicate key.
+	var attrs [4]slog.Attr
+	inject := attrs[:0]
+	if id, ok := RequestID(ctx); ok && validCorrelationID(id) && !recordHasKey(r, requestIDAttr) {
+		inject = append(inject, slog.String(requestIDAttr, id))
+	}
+	if id, ok := SubjectID(ctx); ok && !recordHasKey(r, subjectIDAttr) {
+		inject = append(inject, slog.Int64(subjectIDAttr, id))
+	}
+	if id, ok := c.traceID(ctx); ok && !recordHasKey(r, traceIDAttr) {
+		inject = append(inject, slog.String(traceIDAttr, id))
+	}
+	if c.opts.ServiceName != "" && !recordHasKey(r, serviceAttr) {
+		inject = append(inject, slog.String(serviceAttr, c.opts.ServiceName))
 	}
 
-	if id, ok := RequestID(ctx); ok && validCorrelationID(id) {
-		appendIfAbsent(requestIDAttr, slog.String(requestIDAttr, id))
-	}
-	if id, ok := SubjectID(ctx); ok {
-		appendIfAbsent(subjectIDAttr, slog.Int64(subjectIDAttr, id))
-	}
-	if id, ok := TraceID(ctx); ok && validCorrelationID(id) {
-		appendIfAbsent(traceIDAttr, slog.String(traceIDAttr, id))
-	} else if ext := c.opts.TraceIDExtractor; ext != nil {
-		// B-2: key first; the extractor (OTel span context in #42) only
-		// fills in when the key value is absent or fails the correlation
-		// bounds (empty-string = absent), and its own output passes the
-		// same validation before emission.
-		if id := ext(ctx); validCorrelationID(id) {
-			appendIfAbsent(traceIDAttr, slog.String(traceIDAttr, id))
-		}
-	}
-	if c.opts.ServiceName != "" {
-		appendIfAbsent(serviceAttr, slog.String(serviceAttr, c.opts.ServiceName))
-	}
-
-	if len(attrs) == 0 {
+	if len(inject) == 0 {
 		return c.next.Handle(ctx, r)
 	}
 
-	// Handler contract: never mutate the record in place — clone before
-	// adding.
+	// Handler contract: never mutate the record in place — clone first.
 	r2 := r.Clone()
-	r2.AddAttrs(attrs...)
+	r2.AddAttrs(inject...)
 	return c.next.Handle(ctx, r2)
 }
 
-// WithAttrs returns a new ContextHandler whose wrapped handler carries
-// attrs, preserving the options so child loggers keep injecting.
-func (c *ContextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &ContextHandler{next: c.next.WithAttrs(attrs), opts: c.opts}
+// traceID returns the trace id to inject: the ctx value first, then the
+// extractor output; both must pass the correlation bounds.
+func (c *ContextHandler) traceID(ctx context.Context) (string, bool) {
+	if id, ok := TraceID(ctx); ok && validCorrelationID(id) {
+		return id, true
+	}
+	if c.opts.TraceIDExtractor == nil {
+		return "", false
+	}
+	if id := c.opts.TraceIDExtractor(ctx); validCorrelationID(id) {
+		return id, true
+	}
+	return "", false
 }
 
-// WithGroup returns a new ContextHandler with the group appended to the
-// wrapped handler's groups, preserving the options so child loggers keep
-// injecting. See the type doc for how an open group places the injected
-// record attrs.
-func (c *ContextHandler) WithGroup(name string) slog.Handler {
-	return &ContextHandler{next: c.next.WithGroup(name), opts: c.opts}
-}
-
-// recordHasKey reports whether the record's attrs already carry key. The
-// guard scans r.Attrs because that is the only place a call site can put an
-// owned key on a record; handler-level attrs (logger.With) are ownership
-// violations covered by the package doc, not detectable generically here.
+// recordHasKey reports whether the record already carries key.
+// Handler-level duplicates are prevented by WithAttrs instead.
 func recordHasKey(r slog.Record, key string) bool {
 	has := false
 	r.Attrs(func(a slog.Attr) bool {
@@ -155,4 +121,39 @@ func recordHasKey(r slog.Record, key string) bool {
 		return true
 	})
 	return has
+}
+
+// WithAttrs returns a child handler carrying attrs. Owned keys
+// (request_id, subject_id, trace_id; service while ServiceName is set) are
+// dropped: the decorator injects them itself, and go1.26 built-ins no
+// longer deduplicate keys.
+func (c *ContextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	owned := func(key string) bool {
+		switch key {
+		case requestIDAttr, subjectIDAttr, traceIDAttr:
+			return true
+		case serviceAttr:
+			return c.opts.ServiceName != ""
+		}
+		return false
+	}
+	for _, a := range attrs {
+		if !owned(a.Key) {
+			continue
+		}
+		kept := make([]slog.Attr, 0, len(attrs))
+		for _, b := range attrs {
+			if !owned(b.Key) {
+				kept = append(kept, b)
+			}
+		}
+		return &ContextHandler{next: c.next.WithAttrs(kept), opts: c.opts}
+	}
+	return &ContextHandler{next: c.next.WithAttrs(attrs), opts: c.opts}
+}
+
+// WithGroup appends the group to the wrapped handler; see the type doc for
+// how an open group nests the injected attrs.
+func (c *ContextHandler) WithGroup(name string) slog.Handler {
+	return &ContextHandler{next: c.next.WithGroup(name), opts: c.opts}
 }

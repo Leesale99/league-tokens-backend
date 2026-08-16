@@ -16,9 +16,9 @@ const (
 	FormatJSON
 )
 
-// ParseFormat maps a LOG_FORMAT-style string to a Format. It accepts "text"
-// and "json" case-insensitively and errors otherwise — the same whitelist
-// config.Validate() enforces for LOG_FORMAT (config task 01).
+// ParseFormat maps a LOG_FORMAT-style string to a Format ("text"/"json",
+// case-insensitive). It is the single source of the whitelist:
+// TelemetryConfig.Validate() delegates to it (ADR-0012).
 func ParseFormat(s string) (Format, error) {
 	switch strings.ToLower(s) {
 	case "text":
@@ -30,10 +30,9 @@ func ParseFormat(s string) (Format, error) {
 	}
 }
 
-// NewHandler builds the app's slog handler on out at the given minimum
-// level. It is the single choke point for format/stream: every handler the
-// process uses comes from here, so the two can only drift in one place
-// (ADR-0006). An unrecognized format falls back to text. Never returns nil.
+// NewHandler builds the app's slog handler on out at the given level — the
+// single choke point for format/stream (ADR-0006). Unknown formats fall
+// back to text; never returns nil.
 func NewHandler(level slog.Level, format Format, out io.Writer) slog.Handler {
 	opts := &slog.HandlerOptions{Level: level}
 	if format == FormatJSON {

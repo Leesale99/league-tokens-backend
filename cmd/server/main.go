@@ -9,12 +9,9 @@ import (
 )
 
 func main() {
-	// Boot fallback: text handler on stdout at INFO (ADR-0006), so Load()'s
-	// warnings, any fatal config error, and the boot confirmation always
-	// surface regardless of LOG_LEVEL — the configured level isn't known
-	// until config is parsed. Every handler comes from telemetry/log — the
-	// single choke point for format/stream — so the two can only drift in
-	// one place.
+	// Boot fallback: text handler at INFO (ADR-0006) so config-load
+	// diagnostics always surface — the configured level isn't known yet.
+	// All handlers come from telemetry/log: one choke point for format/stream.
 	boot := slog.New(log.NewHandler(slog.LevelInfo, log.FormatText, os.Stdout))
 	slog.SetDefault(boot)
 
@@ -28,15 +25,13 @@ func main() {
 		"service", cfg.Telemetry.ServiceName,
 		"log_level", level.String())
 
-	// Configured handler: LOG_FORMAT selects text/json via log.ParseFormat
-	// (ADR-0006: text in dev, JSON in production), wrapped in the context
-	// decorator so ADR-0011 correlation fields and the service name land on
-	// every emitted record.
+	// Swap to the configured level/format (ADR-0006: text dev, JSON prod),
+	// wrapped in the context decorator so correlation fields and the
+	// service name land on every record.
 	format, err := log.ParseFormat(cfg.Telemetry.LogFormat)
 	if err != nil {
-		// Defensive only — TelemetryConfig.Validate() already whitelists
-		// LOG_FORMAT to text|json before MustLoad returns (ADR-0012
-		// fast-fail: refuse to serve on bad config).
+		// Defensive: Validate() already whitelisted LOG_FORMAT
+		// (ADR-0012 fast-fail).
 		boot.Error("invalid log format", "error", err, "log_format", cfg.Telemetry.LogFormat)
 		os.Exit(1)
 	}
@@ -44,7 +39,6 @@ func main() {
 		log.NewHandler(level, format, os.Stdout),
 		log.ContextHandlerOptions{ServiceName: cfg.Telemetry.ServiceName},
 	)))
-	// TODO(#42): init the OTLP exporter from cfg.Telemetry (endpoint + token);
-	// until tracing/metrics land, OTLP_ENDPOINT and otlp_token are validated
-	// but unused.
+	// TODO(#42): init the OTLP exporter from cfg.Telemetry; until then
+	// OTLP_ENDPOINT/otlp_token are validated but unused.
 }

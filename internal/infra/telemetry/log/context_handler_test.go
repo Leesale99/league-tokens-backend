@@ -136,8 +136,8 @@ func TestContextHandlerInjectionTable(t *testing.T) {
 	}
 }
 
-// TestContextHandlerTraceKeyWinsOverExtractor asserts the B-2 ordering:
-// a context trace id always beats the extractor fallback.
+// TestContextHandlerTraceKeyWinsOverExtractor asserts a context trace id
+// always beats the extractor fallback.
 func TestContextHandlerTraceKeyWinsOverExtractor(t *testing.T) {
 	buf, logger := captureJSON(ContextHandlerOptions{
 		TraceIDExtractor: func(context.Context) string { return "from-span" },
@@ -146,7 +146,7 @@ func TestContextHandlerTraceKeyWinsOverExtractor(t *testing.T) {
 
 	ms := parseLines(t, buf.Bytes())
 	if got := ms[0][traceIDAttr]; got != "from-key" {
-		t.Errorf("trace_id = %v, want %q (key first per B-2)", got, "from-key")
+		t.Errorf("trace_id = %v, want %q (key first)", got, "from-key")
 	}
 }
 
@@ -177,11 +177,57 @@ func TestContextHandlerDuplicateKeyGuard(t *testing.T) {
 	}
 }
 
-// TestContextHandlerChildLoggers asserts logger.With/WithGroup children keep
-// injecting (options preserved through WithAttrs/WithGroup). With the go1.26
-// stdlib handlers, record attrs — including the injected ones — are emitted
-// inside groups opened by WithGroup, so the grouped line is asserted
-// location-agnostically while the With child is checked top-level.
+// TestContextHandlerWithAttrsFiltered asserts owned keys re-added via
+// logger.With are dropped while ctx values and other attrs still emit.
+func TestContextHandlerWithAttrsFiltered(t *testing.T) {
+	t.Run("owned keys dropped on With, ctx values inject", func(t *testing.T) {
+		buf, logger := captureJSON(ContextHandlerOptions{ServiceName: "svc"})
+		logger.With(
+			slog.String(requestIDAttr, "override"),
+			slog.Int64(subjectIDAttr, 999),
+			slog.String(serviceAttr, "override-svc"),
+			slog.String("static", "attr"),
+		).InfoContext(correlationCtx(), "line")
+
+		out := buf.String()
+		ms := parseLines(t, buf.Bytes())
+		if len(ms) != 1 {
+			t.Fatalf("got %d lines, want 1: %s", len(ms), out)
+		}
+		for _, key := range []string{requestIDAttr, subjectIDAttr, serviceAttr} {
+			if got := strings.Count(out, `"`+key+`"`); got != 1 {
+				t.Errorf("%q appears %d times, want exactly 1 (no duplicate keys): %s", key, got, out)
+			}
+		}
+		if got := ms[0][requestIDAttr]; got != "req-123" {
+			t.Errorf("request_id = %v, want ctx value %q", got, "req-123")
+		}
+		if got := ms[0][subjectIDAttr]; got != float64(42) {
+			t.Errorf("subject_id = %v, want ctx value 42", got)
+		}
+		if got := ms[0][serviceAttr]; got != "svc" {
+			t.Errorf("service = %v, want configured %q", got, "svc")
+		}
+		if got := ms[0]["static"]; got != "attr" {
+			t.Errorf("non-owned With attr lost: %v", got)
+		}
+	})
+
+	t.Run("service not owned while ServiceName unset", func(t *testing.T) {
+		buf, logger := captureJSON(ContextHandlerOptions{})
+		logger.With(slog.String(serviceAttr, "custom")).InfoContext(context.Background(), "line")
+
+		ms := parseLines(t, buf.Bytes())
+		if got := ms[0][serviceAttr]; got != "custom" {
+			t.Errorf("service = %v, want %q (must pass through when not owned)", got, "custom")
+		}
+	})
+}
+
+// TestContextHandlerChildLoggers asserts With/WithGroup children keep
+// injecting. With go1.26 handlers, record attrs (including injected ones)
+// nest under open groups, so the grouped line is asserted
+// location-agnostically.
 func TestContextHandlerChildLoggers(t *testing.T) {
 	buf, logger := captureJSON(ContextHandlerOptions{})
 	ctx := correlationCtx()

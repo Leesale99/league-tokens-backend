@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/caarlos0/env/v11"
+
+	"github.com/Leesale99/league-tokens-backend/internal/infra/telemetry/log"
 )
 
 type PostgresConfig struct {
@@ -123,6 +125,7 @@ func (c *TelemetryConfig) LogLevelSlog() slog.Level {
 		return slog.LevelInfo
 	}
 }
+
 func (c *TelemetryConfig) Validate() error {
 	var errs []string
 	switch strings.ToLower(c.LogLevel) {
@@ -130,10 +133,10 @@ func (c *TelemetryConfig) Validate() error {
 	default:
 		errs = append(errs, "LOG_LEVEL must be one of: debug, info, warn, error")
 	}
-	switch strings.ToLower(c.LogFormat) {
-	case "text", "json":
-	default:
-		errs = append(errs, "LOG_FORMAT must be one of: text, json")
+	// Single whitelist: log.ParseFormat owns the text|json set (ADR-0012
+	// fast-fail).
+	if _, err := log.ParseFormat(c.LogFormat); err != nil {
+		errs = append(errs, fmt.Sprintf("LOG_FORMAT: %v", err))
 	}
 	if c.OTLPEndpoint != "" && c.OTLPToken == "" {
 		errs = append(errs, "otlp_token secret is required when OTLP_ENDPOINT is set")

@@ -112,3 +112,24 @@ func TestOp(t *testing.T) {
 		})
 	}
 }
+
+func TestCode(t *testing.T) {
+	tests := []struct {
+		name string
+		code string
+	}{
+		{"game code", "game.phase_closed"},
+		{"identity code", "identity.session_revoked"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attr := Code(tt.code)
+			if attr.Key != "code" {
+				t.Errorf("Code() key = %q, want %q", attr.Key, "code")
+			}
+			if got := attr.Value.String(); got != tt.code {
+				t.Errorf("Code() value = %q, want %q", got, tt.code)
+			}
+		})
+	}
+}

@@ -84,7 +84,7 @@ func TestTraceID(t *testing.T) {
 	}
 
 	// Empty-string = absent (package policy): nothing stored, so the
-	// decorator's B-2 extractor fallback can run (tested in
+	// decorator's extractor fallback can run (tested in
 	// context_handler_test.go).
 	if _, ok := TraceID(context.Background()); ok {
 		t.Error("TraceID() ok = true on empty context, want false")
@@ -92,7 +92,7 @@ func TestTraceID(t *testing.T) {
 }
 
 // TestCorrelationIDBounds drives both string setters with out-of-bounds
-// values (security I-1): empty, over-length, and control-char ids must leave
+// values: empty, over-length, and control-char ids must leave
 // ctx unchanged (nothing stored), so the decorator can never emit them.
 // subject_id (int64) is untouched by this validation.
 func TestCorrelationIDBounds(t *testing.T) {
