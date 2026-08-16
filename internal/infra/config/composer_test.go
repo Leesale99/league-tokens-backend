@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -28,6 +29,8 @@ func setValidEnv(t *testing.T) {
 	t.Setenv("OTLP_ENDPOINT", "")
 	t.Setenv("SERVICE_NAME", "league-tokens-test")
 	t.Setenv("LOG_LEVEL", "debug")
+	// Set-but-empty exercises envDefault (text) while staying hermetic.
+	t.Setenv("LOG_FORMAT", "")
 	t.Setenv("SESSION_TTL", "1h")
 	t.Setenv("SCHEDULE_PROVIDER_URL", "https://api.example.com/v1")
 	t.Setenv("SCHEDULE_SYNC_INTERVAL", "10m")
@@ -85,6 +88,9 @@ func TestLoad_Valid(t *testing.T) {
 	}
 	if cfg.Telemetry.LogLevelSlog().String() != "DEBUG" {
 		t.Errorf("LogLevelSlog = %q, want DEBUG", cfg.Telemetry.LogLevelSlog())
+	}
+	if cfg.Telemetry.LogFormat != "text" {
+		t.Errorf("Telemetry.LogFormat = %q, want default %q", cfg.Telemetry.LogFormat, "text")
 	}
 
 	if cfg.Identity == nil {
@@ -185,6 +191,21 @@ func TestLoad_InvalidLogLevel(t *testing.T) {
 	}
 }
 
+func TestLoad_InvalidLogFormat(t *testing.T) {
+	origDir := secretsDir
+	secretsDir = t.TempDir()
+	defer func() { secretsDir = origDir }()
+
+	setValidEnv(t)
+	t.Setenv("LOG_FORMAT", "pretty")
+	createSecrets(t, secretsDir)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() expected error for invalid LOG_FORMAT, got nil")
+	}
+}
+
 func TestLoad_InvalidHTTPAddr(t *testing.T) {
 	origDir := secretsDir
 	secretsDir = t.TempDir()
@@ -256,5 +277,43 @@ func TestTelemetryLogLevelSlog(t *testing.T) {
 				t.Errorf("LogLevelSlog(%q) = %q, want %q", tt.level, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestTelemetryLogFormatSlog(t *testing.T) {
+	tests := []struct {
+		format string
+		want   string
+	}{
+		{"json", "json"},
+		{"text", "text"},
+		{"JSON", "json"},
+		{"Text", "text"},
+		{"unknown", "text"},
+		{"", "text"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.format, func(t *testing.T) {
+			cfg := &TelemetryConfig{LogFormat: tt.format}
+			got := cfg.LogFormatSlog()
+			if got != tt.want {
+				t.Errorf("LogFormatSlog(%q) = %q, want %q", tt.format, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTelemetryValidate_InvalidLogFormat(t *testing.T) {
+	cfg := &TelemetryConfig{
+		ServiceName: "league-tokens-test",
+		LogLevel:    "info",
+		LogFormat:   "pretty",
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() expected error for LOG_FORMAT=pretty, got nil")
+	}
+	if !strings.Contains(err.Error(), "LOG_FORMAT") {
+		t.Errorf("Validate() error = %q, want it to mention LOG_FORMAT", err)
 	}
 }

@@ -108,6 +108,7 @@ type TelemetryConfig struct {
 	OTLPToken    string
 	ServiceName  string `env:"SERVICE_NAME" envDefault:"league-tokens-backend"`
 	LogLevel     string `env:"LOG_LEVEL" envDefault:"info"`
+	LogFormat    string `env:"LOG_FORMAT" envDefault:"text"`
 }
 
 func (c *TelemetryConfig) LogLevelSlog() slog.Level {
@@ -123,12 +124,29 @@ func (c *TelemetryConfig) LogLevelSlog() slog.Level {
 	}
 }
 
+// LogFormatSlog returns the normalized format string ("json" or "text");
+// anything unrecognized maps to "text" — the default preserves today's dev
+// behavior, while production sets LOG_FORMAT=json explicitly.
+func (c *TelemetryConfig) LogFormatSlog() string {
+	switch strings.ToLower(c.LogFormat) {
+	case "json":
+		return "json"
+	default:
+		return "text"
+	}
+}
+
 func (c *TelemetryConfig) Validate() error {
 	var errs []string
 	switch strings.ToLower(c.LogLevel) {
 	case "debug", "info", "warn", "error":
 	default:
 		errs = append(errs, "LOG_LEVEL must be one of: debug, info, warn, error")
+	}
+	switch strings.ToLower(c.LogFormat) {
+	case "text", "json":
+	default:
+		errs = append(errs, "LOG_FORMAT must be one of: text, json")
 	}
 	if c.OTLPEndpoint != "" && c.OTLPToken == "" {
 		errs = append(errs, "otlp_token secret is required when OTLP_ENDPOINT is set")
