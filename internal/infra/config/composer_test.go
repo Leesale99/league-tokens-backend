@@ -280,29 +280,6 @@ func TestTelemetryLogLevelSlog(t *testing.T) {
 	}
 }
 
-func TestTelemetryLogFormatSlog(t *testing.T) {
-	tests := []struct {
-		format string
-		want   string
-	}{
-		{"json", "json"},
-		{"text", "text"},
-		{"JSON", "json"},
-		{"Text", "text"},
-		{"unknown", "text"},
-		{"", "text"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.format, func(t *testing.T) {
-			cfg := &TelemetryConfig{LogFormat: tt.format}
-			got := cfg.LogFormatSlog()
-			if got != tt.want {
-				t.Errorf("LogFormatSlog(%q) = %q, want %q", tt.format, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestTelemetryValidate_InvalidLogFormat(t *testing.T) {
 	cfg := &TelemetryConfig{
 		ServiceName: "league-tokens-test",

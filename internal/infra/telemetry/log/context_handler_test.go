@@ -70,6 +70,18 @@ func TestContextHandlerInjectionTable(t *testing.T) {
 			absentKeys: []string{traceIDAttr},
 		},
 		{
+			name:       "empty trace setter call acts absent, extractor wins",
+			ctx:        WithTraceID(context.Background(), ""),
+			extractor:  func(context.Context) string { return "span-1" },
+			wantKeys:   map[string]any{traceIDAttr: "span-1"},
+			absentKeys: []string{requestIDAttr, subjectIDAttr},
+		},
+		{
+			name:       "empty request id setter call acts absent",
+			ctx:        WithRequestID(context.Background(), ""),
+			absentKeys: []string{requestIDAttr, subjectIDAttr, traceIDAttr},
+		},
+		{
 			name:       "trace only via extractor",
 			ctx:        context.Background(),
 			extractor:  func(context.Context) string { return "span-1" },
@@ -80,6 +92,18 @@ func TestContextHandlerInjectionTable(t *testing.T) {
 			name:       "empty extractor result counts as absent",
 			ctx:        context.Background(),
 			extractor:  func(context.Context) string { return "" },
+			absentKeys: []string{requestIDAttr, subjectIDAttr, traceIDAttr},
+		},
+		{
+			name:       "over-long extractor result dropped",
+			ctx:        context.Background(),
+			extractor:  func(context.Context) string { return strings.Repeat("x", maxCorrelationIDLen+1) },
+			absentKeys: []string{requestIDAttr, subjectIDAttr, traceIDAttr},
+		},
+		{
+			name:       "control-char extractor result dropped",
+			ctx:        context.Background(),
+			extractor:  func(context.Context) string { return "\x1b[31mred\x1b[0m" },
 			absentKeys: []string{requestIDAttr, subjectIDAttr, traceIDAttr},
 		},
 		{

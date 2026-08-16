@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -11,7 +12,7 @@ func TestRequestID(t *testing.T) {
 		id   string
 	}{
 		{"plain id", "req-abc123"},
-		{"empty id", ""},
+		{"max length", strings.Repeat("a", maxCorrelationIDLen)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -26,6 +27,9 @@ func TestRequestID(t *testing.T) {
 		})
 	}
 
+	// Empty-string = absent (package policy): the setter stores nothing, the
+	// getter reports absent. Empty/over-long/control-char rejection is
+	// exercised in TestCorrelationIDBounds.
 	if _, ok := RequestID(context.Background()); ok {
 		t.Error("RequestID() ok = true on empty context, want false")
 	}
@@ -64,7 +68,7 @@ func TestTraceID(t *testing.T) {
 		id   string
 	}{
 		{"plain id", "trace-xyz789"},
-		{"empty id", ""},
+		{"max length", strings.Repeat("b", maxCorrelationIDLen)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -79,8 +83,63 @@ func TestTraceID(t *testing.T) {
 		})
 	}
 
+	// Empty-string = absent (package policy): nothing stored, so the
+	// decorator's B-2 extractor fallback can run (tested in
+	// context_handler_test.go).
 	if _, ok := TraceID(context.Background()); ok {
 		t.Error("TraceID() ok = true on empty context, want false")
+	}
+}
+
+// TestCorrelationIDBounds drives both string setters with out-of-bounds
+// values (security I-1): empty, over-length, and control-char ids must leave
+// ctx unchanged (nothing stored), so the decorator can never emit them.
+// subject_id (int64) is untouched by this validation.
+func TestCorrelationIDBounds(t *testing.T) {
+	invalid := []struct {
+		name string
+		id   string
+	}{
+		{"empty", ""},
+		{"over-long", strings.Repeat("a", maxCorrelationIDLen+1)},
+		{"over-long multi-byte", strings.Repeat("€", maxCorrelationIDLen)}, // 128 runes = 384 bytes
+		{"control char", "req\x1b[31mred\x1b[0m"},
+		{"del char", "req\x7f"},
+	}
+	sets := []struct {
+		name string
+		set  func(context.Context, string) context.Context
+	}{
+		{"request_id", WithRequestID},
+		{"trace_id", WithTraceID},
+	}
+	for _, s := range sets {
+		for _, tt := range invalid {
+			t.Run(s.name+"/"+tt.name, func(t *testing.T) {
+				base := context.Background()
+				if got := s.set(base, tt.id); got != base {
+					t.Error("setter returned a different context for invalid id — nothing must be stored")
+				}
+				if s.name == "request_id" {
+					if _, ok := RequestID(base); ok {
+						t.Error("RequestID() ok = true after invalid set, want false")
+					}
+				} else {
+					if _, ok := TraceID(base); ok {
+						t.Error("TraceID() ok = true after invalid set, want false")
+					}
+				}
+			})
+		}
+	}
+
+	// Boundary: exactly maxCorrelationIDLen bytes is still a valid id for
+	// both setters.
+	if _, ok := RequestID(WithRequestID(context.Background(), strings.Repeat("a", maxCorrelationIDLen))); !ok {
+		t.Error("max-length request id dropped by setter, want stored")
+	}
+	if _, ok := TraceID(WithTraceID(context.Background(), strings.Repeat("b", maxCorrelationIDLen))); !ok {
+		t.Error("max-length trace id dropped by setter, want stored")
 	}
 }
 

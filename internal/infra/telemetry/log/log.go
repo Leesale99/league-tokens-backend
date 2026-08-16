@@ -33,6 +33,15 @@
 // middleware calls WithSubjectID(int64); #42 wires the trace_id span
 // fallback into the context decorator. Values absent from ctx are simply
 // not emitted — the decorator is nil-safe.
+//
+// Empty-string = absent: an empty request/trace id is never stored by the
+// setters and never emitted; for trace_id, an absent or empty key value lets
+// the TraceIDExtractor fallback run (B-2). Correlation ids are bounded by
+// validCorrelationID (≤128 bytes, no control characters) at both the setters
+// and the decorator's injection path, so a hostile value can neither amplify
+// logs nor inject terminal escapes into dev text logs. #8 should prefer
+// server-generated ids; any value derived from client-supplied headers must
+// be validated by #8's middleware before calling the setters.
 package log
 
 import "log/slog"

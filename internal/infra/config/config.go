@@ -123,19 +123,6 @@ func (c *TelemetryConfig) LogLevelSlog() slog.Level {
 		return slog.LevelInfo
 	}
 }
-
-// LogFormatSlog returns the normalized format string ("json" or "text");
-// anything unrecognized maps to "text" — the default preserves today's dev
-// behavior, while production sets LOG_FORMAT=json explicitly.
-func (c *TelemetryConfig) LogFormatSlog() string {
-	switch strings.ToLower(c.LogFormat) {
-	case "json":
-		return "json"
-	default:
-		return "text"
-	}
-}
-
 func (c *TelemetryConfig) Validate() error {
 	var errs []string
 	switch strings.ToLower(c.LogLevel) {

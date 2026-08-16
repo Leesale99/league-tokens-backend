@@ -24,8 +24,9 @@ type ContextHandlerOptions struct {
 	ServiceName string
 
 	// TraceIDExtractor derives a trace id from ctx when the context carries
-	// no WithTraceID value — decision B-2: key first, extractor second;
-	// absent both → the field is not emitted. #42 wires
+	// no usable WithTraceID value — decision B-2: key first, extractor second;
+	// key absent/out-of-bounds and extractor output failing the correlation
+	// bounds → the field is not emitted. #42 wires
 	// trace.SpanContextFromContext(ctx) here without rework. Nil disables
 	// the fallback.
 	TraceIDExtractor func(context.Context) string
@@ -35,10 +36,11 @@ type ContextHandlerOptions struct {
 // correlation fields present in the record's context: request_id and
 // subject_id (set by #8/#11 middlewares via WithRequestID/WithSubjectID)
 // and trace_id (key first, then TraceIDExtractor). When ServiceName is
-// set, a "service" attr is added too. Fields absent from ctx are not
-// emitted; fields the record already carries are not injected again —
-// go1.26 built-in handlers no longer deduplicate keys, so a repeat would
-// emit duplicate JSON keys.
+// set, a "service" attr is added too. Fields absent from ctx — including
+// empty/out-of-bounds request/trace ids, per the empty-string = absent
+// policy — are not emitted; fields the record already carries are not
+// injected again — go1.26 built-in handlers no longer deduplicate keys, so
+// a repeat would emit duplicate JSON keys.
 //
 // It implements slog.Handler by forwarding all four methods. Enabled and
 // Handle delegate to the wrapped handler (which does the formatting);
@@ -93,19 +95,20 @@ func (c *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 		attrs = append(attrs, a)
 	}
 
-	if id, ok := RequestID(ctx); ok {
+	if id, ok := RequestID(ctx); ok && validCorrelationID(id) {
 		appendIfAbsent(requestIDAttr, slog.String(requestIDAttr, id))
 	}
 	if id, ok := SubjectID(ctx); ok {
 		appendIfAbsent(subjectIDAttr, slog.Int64(subjectIDAttr, id))
 	}
-	if id, ok := TraceID(ctx); ok {
+	if id, ok := TraceID(ctx); ok && validCorrelationID(id) {
 		appendIfAbsent(traceIDAttr, slog.String(traceIDAttr, id))
 	} else if ext := c.opts.TraceIDExtractor; ext != nil {
 		// B-2: key first; the extractor (OTel span context in #42) only
-		// fills in when the key is absent, and an empty result counts as
-		// absent.
-		if id := ext(ctx); id != "" {
+		// fills in when the key value is absent or fails the correlation
+		// bounds (empty-string = absent), and its own output passes the
+		// same validation before emission.
+		if id := ext(ctx); validCorrelationID(id) {
 			appendIfAbsent(traceIDAttr, slog.String(traceIDAttr, id))
 		}
 	}
