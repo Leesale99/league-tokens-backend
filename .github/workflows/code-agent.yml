@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: 24
 
-      - name: Configure oc-sdk-go custom provider
+      - name: Configure opencode-go custom provider
         run: bash .github/scripts/configure-provider.sh
 
       - name: Fetch thread context
@@ -42,10 +42,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          {
           TASK=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH" | sed 's|^/code[[:space:]]*||')
-          echo "task<<TASK_EOF" >> "$GITHUB_OUTPUT"
-          echo "$TASK" >> "$GITHUB_OUTPUT"
-          echo "TASK_EOF" >> "$GITHUB_OUTPUT"
+          echo "task<<TASK_EOF"
+          echo "$TASK"
+          echo "TASK_EOF"
 
           # The /code anchor: path + line + diff hunk of the inline comment
           # that triggered this run. This is what "this comment" refers to,
@@ -55,23 +56,24 @@ jobs:
           COMMENT_LINE=$(jq -r '.comment.line // .comment.original_line // empty' "$GITHUB_EVENT_PATH")
           COMMENT_HUNK=$(jq -r '.comment.diff_hunk // empty' "$GITHUB_EVENT_PATH")
           if [ -n "$COMMENT_PATH" ] && [ -n "$COMMENT_LINE" ]; then
-            echo "anchor=$COMMENT_PATH:$COMMENT_LINE" >> "$GITHUB_OUTPUT"
-            echo "anchor_hunk<<HUNK_EOF" >> "$GITHUB_OUTPUT"
-            echo "$COMMENT_HUNK" | head -c 3000 >> "$GITHUB_OUTPUT"
-            echo "" >> "$GITHUB_OUTPUT"
-            echo "HUNK_EOF" >> "$GITHUB_OUTPUT"
+            echo "anchor=$COMMENT_PATH:$COMMENT_LINE"
+            echo "anchor_hunk<<HUNK_EOF"
+            echo "$COMMENT_HUNK" | head -c 3000
+            echo ""
+            echo "HUNK_EOF"
           fi
 
           IN_REPLY_TO=$(jq -r '.comment.in_reply_to_id // 0' "$GITHUB_EVENT_PATH")
-          echo "in_reply_to=$IN_REPLY_TO" >> "$GITHUB_OUTPUT"
+          echo "in_reply_to=$IN_REPLY_TO"
           if [ "$IN_REPLY_TO" != "0" ] && [ "$IN_REPLY_TO" != "null" ]; then
             PARENT=$(gh api "repos/${{ github.repository }}/pulls/comments/$IN_REPLY_TO" --jq '.body' 2>/dev/null || true)
             if [ -n "$PARENT" ]; then
-              echo "parent_body<<PARENT_EOF" >> "$GITHUB_OUTPUT"
-              echo "$PARENT" >> "$GITHUB_OUTPUT"
-              echo "PARENT_EOF" >> "$GITHUB_OUTPUT"
+              echo "parent_body<<PARENT_EOF"
+              echo "$PARENT"
+              echo "PARENT_EOF"
             fi
           fi
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run Code Agent
         id: pi
@@ -81,7 +83,7 @@ jobs:
           # github-actions[bot], so it can't spawn a second workflow run.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           provider: opencode-go
-          model: mimo-v2.5
+          model: gpt-5.6-luna
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
           trigger: /code
           # High: deliberation moves into the model's hidden thinking channel

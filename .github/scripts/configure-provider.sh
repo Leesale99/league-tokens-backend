@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared provider configuration for oc-sdk-go custom provider.
+# Shared provider configuration for opencode-go custom provider.
 # Writes ~/.pi/agent/models.json with all available models.
 # Individual workflows select the model at runtime via the `model` input.
 set -euo pipefail
@@ -8,7 +8,7 @@ mkdir -p ~/.pi/agent
 cat > ~/.pi/agent/models.json << 'MODELS_EOF'
 {
   "providers": {
-    "oc-sdk-go": {
+    "opencode-go": {
       "baseUrl": "https://opencode.ai/zen/go/v1",
       "api": "openai-completions",
       "models": [
