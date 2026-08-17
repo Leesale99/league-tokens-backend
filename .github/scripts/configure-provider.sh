@@ -17,7 +17,7 @@ cat > ~/.pi/agent/models.json << 'MODELS_EOF'
           "name": "DeepSeek V4 Flash",
           "reasoning": true,
           "input": ["text"],
-          "cost": {"input": 0.14, "output": 0.28, "cacheRead": 0.0028, "cacheWrite": 0},
+          "cost": {"input": 0.14, "output": 0.28, "cacheRead": 0, "cacheWrite": 0},
           "compat": {
             "supportsStore": false,
             "supportsDeveloperRole": false,
@@ -25,8 +25,8 @@ cat > ~/.pi/agent/models.json << 'MODELS_EOF'
             "requiresReasoningContentOnAssistantMessages": true,
             "thinkingFormat": "deepseek"
           },
-          "contextWindow": 1048576,
-          "maxTokens": 128000,
+          "contextWindow": 1000000,
+          "maxTokens": 384000,
           "thinkingLevelMap": {
             "minimal": null,
             "low": null,
