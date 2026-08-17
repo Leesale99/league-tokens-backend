@@ -72,15 +72,26 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install Go review skills
+      - name: Install pinned Go review skills
         run: |
-          git clone --depth 1 https://github.com/samber/cc-skills-golang.git /tmp/cc-skills-golang
+          set -euo pipefail
+          SKILLS_REPO="https://github.com/samber/cc-skills-golang.git"
+          SKILLS_COMMIT="30cdf15cde8db8730c42a2918d7cdb4505f5ff54"
+          SKILLS_DIR=/tmp/cc-skills-golang
+
+          rm -rf "$SKILLS_DIR"
+          git init -q "$SKILLS_DIR"
+          git -C "$SKILLS_DIR" remote add origin "$SKILLS_REPO"
+          git -C "$SKILLS_DIR" fetch -q --depth 1 origin "$SKILLS_COMMIT"
+          git -C "$SKILLS_DIR" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$SKILLS_DIR" rev-parse HEAD)" = "$SKILLS_COMMIT"
+
+          # Install the complete immutable tree so every sibling skill named
+          # by a selected parent is discoverable under project .pi/skills.
           mkdir -p .pi/skills
-          # Install the complete tree so a selected skill can reference
-          # supporting sibling skills. The matrix-selected skills are still
-          # passed explicitly to pi below as the primary review focus.
-          cp -r /tmp/cc-skills-golang/skills/* .pi/skills/
-          rm -rf /tmp/cc-skills-golang
+          cp -a "$SKILLS_DIR/skills/." .pi/skills/
+          test -n "$(find .pi/skills -name SKILL.md -print -quit)"
+          rm -rf "$SKILLS_DIR"
 
       - name: Read review prompt
         id: prompt
@@ -93,10 +104,12 @@ jobs:
             cat ".github/prompts/${{ inputs.focus }}.md"
             printf '\n## PR Diff\n'
             printf '```diff\n'
+            # Include the complete diff; cutting through a file boundary can
+            # make a valid source file look syntactically truncated to the reviewer.
             if [ -n "${INCREMENTAL_DIFF:-}" ]; then
-              echo "$INCREMENTAL_DIFF" | head -n 500
+              printf '%s\n' "$INCREMENTAL_DIFF"
             else
-              gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null | head -n 500 || true
+              gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null || true
             fi
             printf '```\n'
             # Give the model the exact findings output path (expanded, not literal).
@@ -119,9 +132,9 @@ jobs:
         run: |
           set -euo pipefail
           # pi never writes to the PR: the model's only output channel is the
-          # findings file (FINDINGS_FILE). Load the review skills explicitly
-          # (the selected skills are explicit; the complete installed tree is
-          # available so referenced supporting skills can be loaded on demand).
+          # findings file (FINDINGS_FILE). The selected skills are passed as
+          # the primary focus, while the complete pinned tree remains
+          # discoverable for sibling references.
           SKILL_ARGS=()
           IFS=',' read -ra REQUESTED_SKILLS <<< "${{ inputs.skills }}"
           for SKILL in "${REQUESTED_SKILLS[@]}"; do

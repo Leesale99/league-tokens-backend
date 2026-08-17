@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"log/slog"
+	"reflect"
 )
 
 // Attr names owned by the decorator — call sites must not re-add them
@@ -16,13 +17,14 @@ const (
 
 // ContextHandlerOptions configures the context-decorating handler.
 type ContextHandlerOptions struct {
-	// ServiceName, when non-empty, is injected as a "service" attr on every
-	// record the handler emits.
+	// ServiceName, when non-empty and valid according to ValidCorrelationID,
+	// is injected as a "service" attr on every record the handler emits.
+	// NewContextHandler rejects invalid values.
 	ServiceName string
 
 	// TraceIDExtractor derives a trace id from ctx when no usable
-	// WithTraceID value is present. Nil disables it; #42 wires
-	// trace.SpanContextFromContext here.
+	// WithTraceID value is present. Nil disables it; #42 should adapt
+	// trace.SpanContextFromContext to return its valid TraceID().String().
 	TraceIDExtractor func(context.Context) string
 }
 
@@ -50,15 +52,14 @@ type ContextHandler struct {
 
 // isOwned reports whether key is owned by the decorator: injected (and
 // dropped from logger.With) whenever the ctx provides it, or — for
-// "service" — whenever ServiceName is set. Single source of the owned set,
-// shared by Handle and WithAttrs so a new owned field needs exactly one
-// edit.
+// "service" — whenever ServiceName is set and valid. Handle and WithAttrs
+// both use this predicate so their ownership policy stays consistent.
 func isOwned(key string, opts ContextHandlerOptions) bool {
 	switch key {
 	case requestIDAttr, subjectIDAttr, traceIDAttr:
 		return true
 	case serviceAttr:
-		return opts.ServiceName != ""
+		return opts.ServiceName != "" && ValidCorrelationID(opts.ServiceName)
 	}
 	return false
 }
@@ -66,12 +67,32 @@ func isOwned(key string, opts ContextHandlerOptions) bool {
 // NewContextHandler returns a handler that decorates h with context-value
 // injection. h must be a freshly built handler (e.g. NewHandler) — never one
 // captured from slog.Default(), which would deadlock a subsequent
-// slog.SetDefault (golang/go#61892).
+// slog.SetDefault (golang/go#61892). A nil or typed-nil handler, or an
+// invalid non-empty ServiceName, fails fast at construction.
 func NewContextHandler(h slog.Handler, opts ContextHandlerOptions) *ContextHandler {
-	if h == nil {
+	if isNilHandler(h) {
 		panic("telemetry/log: NewContextHandler requires a non-nil handler")
 	}
+	if opts.ServiceName != "" && !ValidCorrelationID(opts.ServiceName) {
+		panic("telemetry/log: ContextHandlerOptions.ServiceName must be at most 128 bytes and contain no control characters when non-empty")
+	}
 	return &ContextHandler{next: h, opts: opts}
+}
+
+// isNilHandler detects both a nil interface and an interface containing a
+// typed-nil value. The latter otherwise passes a direct h == nil check and
+// panics only when the first handler method is called.
+func isNilHandler(h slog.Handler) bool {
+	if h == nil {
+		return true
+	}
+	v := reflect.ValueOf(h)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 // Enabled delegates the level decision to the wrapped handler.
@@ -94,16 +115,22 @@ func (c *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 	// emit a duplicate key.
 	var attrs [4]slog.Attr
 	inject := attrs[:0]
-	if id, ok := RequestID(ctx); ok && ValidCorrelationID(id) && !recordHasKey(r, requestIDAttr) {
-		inject = append(inject, slog.String(requestIDAttr, id))
+	if isOwned(requestIDAttr, c.opts) {
+		if id, ok := RequestID(ctx); ok && ValidCorrelationID(id) && !recordHasKey(r, requestIDAttr) {
+			inject = append(inject, slog.String(requestIDAttr, id))
+		}
 	}
-	if id, ok := SubjectID(ctx); ok && !recordHasKey(r, subjectIDAttr) {
-		inject = append(inject, slog.Int64(subjectIDAttr, id))
+	if isOwned(subjectIDAttr, c.opts) {
+		if id, ok := SubjectID(ctx); ok && !recordHasKey(r, subjectIDAttr) {
+			inject = append(inject, slog.Int64(subjectIDAttr, id))
+		}
 	}
-	if id, ok := c.traceID(ctx); ok && !recordHasKey(r, traceIDAttr) {
-		inject = append(inject, slog.String(traceIDAttr, id))
+	if isOwned(traceIDAttr, c.opts) {
+		if id, ok := c.traceID(ctx); ok && !recordHasKey(r, traceIDAttr) {
+			inject = append(inject, slog.String(traceIDAttr, id))
+		}
 	}
-	if c.opts.ServiceName != "" && ValidCorrelationID(c.opts.ServiceName) && !recordHasKey(r, serviceAttr) {
+	if isOwned(serviceAttr, c.opts) && !recordHasKey(r, serviceAttr) {
 		inject = append(inject, slog.String(serviceAttr, c.opts.ServiceName))
 	}
 

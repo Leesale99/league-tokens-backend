@@ -41,7 +41,7 @@ func TestParseFormat(t *testing.T) {
 func TestNewHandlerJSON(t *testing.T) {
 	var buf bytes.Buffer
 	logger := New(slog.LevelInfo, FormatJSON, &buf)
-	logger.Info("match resolved", Op("game.ResolveMatch"), "round", 14)
+	logger.Info("match resolved", Op("game.ResolveMatch"), slog.Int("round", 14))
 
 	var m map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &m); err != nil {
@@ -66,7 +66,7 @@ func TestNewHandlerJSON(t *testing.T) {
 func TestNewHandlerText(t *testing.T) {
 	var buf bytes.Buffer
 	logger := New(slog.LevelInfo, FormatText, &buf)
-	logger.Info("match resolved", Op("game.ResolveMatch"), "round", 14)
+	logger.Info("match resolved", Op("game.ResolveMatch"), slog.Int("round", 14))
 
 	out := buf.String()
 	for _, want := range []string{`msg="match resolved"`, "level=INFO", "op=game.ResolveMatch", "round=14"} {

@@ -88,7 +88,7 @@ jobs:
           trigger: /code
           # High: deliberation moves into the model's hidden thinking channel
           # (thinking_delta), which the action excludes from the posted comment.
-          # With thinking off, deepseek narrates its reasoning as visible text
+          # With thinking off, GPT-5.6 Luna narrates its reasoning as visible text
           # deltas that the action concatenates into the reply. Explicit
           # reasoning on an ambiguous task previously caused runaway
           # deliberation — the hard 2-round limit below caps that risk.
@@ -154,7 +154,7 @@ jobs:
           {
             echo "## Token Usage"
             echo ""
-            echo "**Job:** Code Agent · **Model:** deepseek-v4-flash"
+            echo "**Job:** Code Agent · **Model:** gpt-5.6-luna"
             echo ""
             echo "| Input (fresh) | Output | Cost |"
             echo "|---|---|---|"

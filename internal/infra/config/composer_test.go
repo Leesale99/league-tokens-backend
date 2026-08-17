@@ -332,19 +332,23 @@ func TestTelemetryValidate_InvalidLogFormat(t *testing.T) {
 }
 
 func TestTelemetryValidate_InvalidServiceName(t *testing.T) {
-	for _, name := range []string{
-		strings.Repeat("a", 129), // over the 128-byte cap
-		"svc\x1b[31mred\x1b[0m",  // terminal escape
-	} {
-		t.Run("invalid", func(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "overlong", value: strings.Repeat("a", 129)},
+		{name: "control_chars", value: "svc\x1b[31mred\x1b[0m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			cfg := &TelemetryConfig{
-				ServiceName: name,
+				ServiceName: tt.value,
 				LogLevel:    "info",
 				LogFormat:   "text",
 			}
 			err := cfg.Validate()
 			if err == nil {
-				t.Fatalf("Validate() expected error for SERVICE_NAME %q, got nil", name)
+				t.Fatalf("Validate() expected error for SERVICE_NAME %q, got nil", tt.value)
 			}
 			if !strings.Contains(err.Error(), "SERVICE_NAME") {
 				t.Errorf("Validate() error = %q, want it to mention SERVICE_NAME", err)

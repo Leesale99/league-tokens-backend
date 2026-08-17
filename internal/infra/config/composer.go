@@ -76,8 +76,8 @@ func Load() (*ComposerConfig, error) {
 
 	if feed.AllowInsecureHTTP || schedule.AllowInsecureHTTP {
 		slog.Warn("provider_api_key will travel in cleartext: insecure-http opt-in enabled (dev only, ADR-0007)",
-			"feed_allow_insecure_http", feed.AllowInsecureHTTP,
-			"schedule_allow_insecure_http", schedule.AllowInsecureHTTP)
+			slog.Bool("feed_allow_insecure_http", feed.AllowInsecureHTTP),
+			slog.Bool("schedule_allow_insecure_http", schedule.AllowInsecureHTTP))
 	}
 
 	return &ComposerConfig{
@@ -95,7 +95,7 @@ func Load() (*ComposerConfig, error) {
 func MustLoad() *ComposerConfig {
 	cfg, err := Load()
 	if err != nil {
-		slog.Error("config load failed", "error", err)
+		slog.Error("config load failed", slog.Any("error", err))
 		os.Exit(1)
 	}
 	return cfg

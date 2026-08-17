@@ -14,9 +14,11 @@
 // until the error-model issue ships apperr/codes.go. The decorator drops
 // owned keys re-added via logger.With (ContextHandler.WithAttrs) — even
 // when the ctx field is absent, so logger.With must not be used to set
-// correlation values. The slog built-ins time, level, msg, source are
-// reserved — go1.26 no longer filters collisions, so a duplicate key would
-// be emitted.
+// correlation values. For owned fields, record-level attrs win over ctx;
+// non-owned duplicate keys remain the call site's responsibility. Prefer
+// typed slog.Attr arguments (enforced by sloglint attr-only). The slog
+// built-ins time, level, msg, source are reserved — go1.26 no longer
+// filters collisions, so a duplicate key would be emitted.
 //
 // # op convention
 //

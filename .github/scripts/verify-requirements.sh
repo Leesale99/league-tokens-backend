@@ -51,7 +51,9 @@ echo "Fetched issue: $ISSUE_TITLE"
 
 # ── Get PR diff ────────────────────────────────────────────────────────
 
-DIFF=$(gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null | head -n 800 || true)
+# Keep the complete diff; truncating through a file boundary can hide the
+# implementation needed to verify a requirement.
+DIFF=$(gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null || true)
 
 # ── Build prompt ───────────────────────────────────────────────────────
 
@@ -70,7 +72,7 @@ RESPONSE=$(curl -s "https://opencode.ai/zen/go/v1/chat/completions" \
   -H "Authorization: Bearer $OPENCODE_GO_API_KEY" \
   -H "Content-Type: application/json" \
   -d "$(jq -n \
-    --arg model "deepseek-v4-flash" \
+    --arg model "gpt-5.6-luna" \
     --arg system "$SYSTEM_PROMPT" \
     --rawfile prompt "$tmp/prompt.txt" \
     '{

@@ -8,7 +8,10 @@ linters:
     - errcheck
     - ineffassign
     - unused
+    - sloglint
   settings:
+    sloglint:
+      attr-only: true
     depguard:
       rules:
         game:

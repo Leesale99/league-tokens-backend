@@ -156,7 +156,7 @@ func TestContextHandlerTraceKeyWinsOverExtractor(t *testing.T) {
 // no longer deduplicate keys), while the other fields still inject.
 func TestContextHandlerDuplicateKeyGuard(t *testing.T) {
 	buf, logger := captureJSON(ContextHandlerOptions{})
-	logger.InfoContext(correlationCtx(), "line", requestIDAttr, "preset")
+	logger.InfoContext(correlationCtx(), "line", slog.String(requestIDAttr, "preset"))
 
 	out := buf.String()
 	if got := strings.Count(out, `"`+requestIDAttr+`"`); got != 1 {
@@ -233,8 +233,8 @@ func TestContextHandlerChildLoggers(t *testing.T) {
 	buf, logger := captureJSON(ContextHandlerOptions{})
 	ctx := correlationCtx()
 
-	logger.With("static", "attr").InfoContext(ctx, "with child")
-	logger.WithGroup("g").With("k", "v").InfoContext(ctx, "grouped child")
+	logger.With(slog.String("static", "attr")).InfoContext(ctx, "with child")
+	logger.WithGroup("g").With(slog.String("k", "v")).InfoContext(ctx, "grouped child")
 
 	ms := parseLines(t, buf.Bytes())
 	if len(ms) != 2 {
@@ -304,6 +304,9 @@ func TestContextHandlerNilCtx(t *testing.T) {
 	// Pass nil through a variable: the runtime value is nil (exercising the
 	// nil-ctx guard) without tripping staticcheck SA1012 on a literal nil.
 	var nilCtx context.Context
+	if !h.Enabled(nilCtx, slog.LevelInfo) {
+		t.Fatal("Enabled(nil, INFO) = false, want true")
+	}
 	if err := h.Handle(nilCtx, r); err != nil {
 		t.Fatalf("Handle(nil, r) error = %v", err)
 	}
@@ -334,24 +337,45 @@ func TestNewContextHandlerNilHandler(t *testing.T) {
 	NewContextHandler(nil, ContextHandlerOptions{})
 }
 
-// TestContextHandlerServiceBounds asserts a ServiceName that fails the
-// correlation bounds is treated as absent at injection, matching the
-// request/trace id policy (belt-and-suspenders on top of config Validate).
-func TestContextHandlerServiceBounds(t *testing.T) {
-	for _, name := range []string{
-		strings.Repeat("x", maxCorrelationIDLen+1), // over-long
-		"svc\x1b[31mred\x1b[0m",                    // control chars
-	} {
-		t.Run("invalid", func(t *testing.T) {
-			buf, logger := captureJSON(ContextHandlerOptions{ServiceName: name})
-			logger.InfoContext(context.Background(), "line")
-
-			ms := parseLines(t, buf.Bytes())
-			if _, ok := ms[0][serviceAttr]; ok {
-				t.Errorf("service %q emitted despite failing correlation bounds", name)
-			}
+// TestNewContextHandlerInvalidServiceName asserts invalid direct options
+// fail at construction, matching TelemetryConfig.Validate's boot-time guard.
+func TestNewContextHandlerInvalidServiceName(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "overlong", value: strings.Repeat("x", maxCorrelationIDLen+1)},
+		{name: "control_chars", value: "svc\x1b[31mred\x1b[0m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("NewContextHandler accepted invalid SERVICE_NAME %q", tt.value)
+				}
+			}()
+			NewContextHandler(NewHandler(slog.LevelDebug, FormatJSON, io.Discard), ContextHandlerOptions{ServiceName: tt.value})
 		})
 	}
+}
+
+// typedNilHandler implements slog.Handler through a pointer so the test can
+// exercise an interface containing a typed nil pointer.
+type typedNilHandler struct{}
+
+func (*typedNilHandler) Enabled(context.Context, slog.Level) bool  { return true }
+func (*typedNilHandler) Handle(context.Context, slog.Record) error { return nil }
+func (h *typedNilHandler) WithAttrs([]slog.Attr) slog.Handler      { return h }
+func (h *typedNilHandler) WithGroup(string) slog.Handler           { return h }
+
+func TestNewContextHandlerTypedNilHandler(t *testing.T) {
+	var h *typedNilHandler
+	defer func() {
+		if recover() == nil {
+			t.Fatal("NewContextHandler accepted a typed-nil handler")
+		}
+	}()
+	NewContextHandler(h, ContextHandlerOptions{})
 }
 
 // BenchmarkContextHandlerHandle quantifies the per-record cost of the
