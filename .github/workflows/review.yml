@@ -89,7 +89,7 @@ jobs:
         id: prompt
         env:
           GH_TOKEN: ${{ github.token }}
-          FINDINGS_FILE: ${{ runner.temp }}/review-findings.json  # runner is step-level-only in env
+          FINDINGS_FILE: ${{ runner.temp }}/review-findings.json # runner is step-level-only in env
         run: |
           cat ".github/prompts/_common.md" > "$RUNNER_TEMP/review-prompt.md"
           cat ".github/prompts/${{ inputs.focus }}.md" >> "$RUNNER_TEMP/review-prompt.md"
@@ -104,7 +104,7 @@ jobs:
           # Give the model the exact findings output path (expanded, not literal).
           printf '\n## Findings output\n\nWrite your findings JSON array to `%s` using the write tool. See _common.md for the schema.\n' "$FINDINGS_FILE" >> "$RUNNER_TEMP/review-prompt.md"
 
-      - name: Configure oc-sdk-go custom provider
+      - name: Configure opencode-go custom provider
         run: bash .github/scripts/configure-provider.sh
 
       - name: Install pi
@@ -132,7 +132,7 @@ jobs:
           done
 
           pi --mode json \
-            --provider oc-sdk-go \
+            --provider opencode-go \
             --model "${{ inputs.model }}" \
             --api-key "$OPENCODE_GO_API_KEY" \
             --thinking high \

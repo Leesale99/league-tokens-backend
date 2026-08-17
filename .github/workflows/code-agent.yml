@@ -80,7 +80,7 @@ jobs:
           # GITHUB_TOKEN (not a PAT): the agent's reply comment is posted as
           # github-actions[bot], so it can't spawn a second workflow run.
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          provider: oc-sdk-go
+          provider: opencode-go
           model: mimo-v2.5
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
           trigger: /code
