@@ -13,13 +13,28 @@ cat > ~/.pi/agent/models.json << 'MODELS_EOF'
       "api": "openai-completions",
       "models": [
         {
-          "id": "gpt-5.6-luna",
-          "name": "GPT-5.6 Luna",
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
           "reasoning": true,
           "input": ["text"],
-          "cost": {"input": 0.20, "output": 1.20, "cacheRead": 0.02, "cacheWrite": 0},
-          "contextWindow": 1050000,
-          "maxTokens": 128000
+          "cost": {"input": 0.14, "output": 0.28, "cacheRead": 0.0028, "cacheWrite": 0},
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "maxTokensField": "max_tokens",
+            "requiresReasoningContentOnAssistantMessages": true,
+            "thinkingFormat": "deepseek"
+          },
+          "contextWindow": 1048576,
+          "maxTokens": 128000,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+          }
         }
       ]
     }

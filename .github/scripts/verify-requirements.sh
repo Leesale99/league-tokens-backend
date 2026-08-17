@@ -72,7 +72,7 @@ RESPONSE=$(curl -s "https://opencode.ai/zen/go/v1/chat/completions" \
   -H "Authorization: Bearer $OPENCODE_GO_API_KEY" \
   -H "Content-Type: application/json" \
   -d "$(jq -n \
-    --arg model "gpt-5.6-luna" \
+    --arg model "deepseek-v4-flash" \
     --arg system "$SYSTEM_PROMPT" \
     --rawfile prompt "$tmp/prompt.txt" \
     '{

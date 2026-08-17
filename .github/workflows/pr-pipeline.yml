@@ -76,19 +76,19 @@ jobs:
       matrix:
         include:
           - focus: quality
-            model: gpt-5.6-luna
+            model: deepseek-v4-flash
             skills: golang-code-style,golang-naming,golang-documentation
             job_name: Review — Quality
           - focus: correctness
-            model: gpt-5.6-luna
+            model: deepseek-v4-flash
             skills: golang-error-handling,golang-safety,golang-concurrency
             job_name: Review — Correctness
           - focus: security
-            model: gpt-5.6-luna
+            model: deepseek-v4-flash
             skills: golang-security,golang-dependency-management
             job_name: Review — Security & Dependencies
           - focus: quality-depth
-            model: gpt-5.6-luna
+            model: deepseek-v4-flash
             skills: golang-testing,golang-performance,golang-observability,golang-modernize
             job_name: Review — Tests, Performance & Observability
     uses: ./.github/workflows/review.yml
