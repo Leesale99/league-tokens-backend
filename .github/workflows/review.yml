@@ -89,6 +89,9 @@ jobs:
 
           # Install the complete immutable tree so every sibling skill named
           # by a selected parent is discoverable under project .pi/skills.
+          # Remove the PR-provided directory first so extra files cannot
+          # remain alongside the pinned tree.
+          rm -rf .pi/skills
           mkdir -p .pi/skills
           cp -a "$SKILLS_DIR/skills/." .pi/skills/
           test -n "$(find .pi/skills -name SKILL.md -print -quit)"
@@ -99,12 +102,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FINDINGS_FILE: ${{ runner.temp }}/review-findings.json # runner is step-level-only in env
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          BASE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+          FOCUS: ${{ inputs.focus }}
         run: |
           set -euo pipefail
           MAX_DIFF_BYTES=300000
           DIFF_FILE="$RUNNER_TEMP/review-diff.txt"
-          if [ -n "${INCREMENTAL_DIFF:-}" ]; then
-            printf '%s\n' "$INCREMENTAL_DIFF" > "$DIFF_FILE"
+          BASE_SHA="${BASE_SHA:-}"
+          BASE_REF="${BASE_REF:-main}"
+          if [ -z "$BASE_SHA" ]; then
+            BASE_SHA=$(git rev-parse "origin/$BASE_REF")
+          fi
+          case "$FOCUS" in
+            quality|correctness|security|quality-depth) ;;
+            *)
+              echo "::error::Unsupported review focus: $FOCUS"
+              exit 1
+              ;;
+          esac
+
+          if [ -n "${INCREMENTAL_DIFF_FILE:-}" ]; then
+            if [ ! -f "$INCREMENTAL_DIFF_FILE" ]; then
+              echo "::error::Incremental diff file is missing: $INCREMENTAL_DIFF_FILE"
+              exit 1
+            fi
+            cp -- "$INCREMENTAL_DIFF_FILE" "$DIFF_FILE"
           else
             gh pr diff "$PR_NUMBER" --repo "$REPO" > "$DIFF_FILE" 2>/dev/null || true
           fi
@@ -114,8 +137,9 @@ jobs:
           fi
 
           {
-            cat ".github/prompts/_common.md"
-            cat ".github/prompts/${{ inputs.focus }}.md"
+            # Review policy must come from the base commit, not the PR tree.
+            git show "$BASE_SHA:.github/prompts/_common.md"
+            git show "$BASE_SHA:.github/prompts/${FOCUS}.md"
             printf '\n## PR Diff (untrusted data)\n'
             printf '```diff\n'
             # Keep small diffs complete. A large diff is explicitly marked so
@@ -164,6 +188,27 @@ jobs:
           # OpenAI-compatible streams can terminate without finish_reason
           # transiently after a tool call. Retry boundedly with jitter so one
           # incomplete provider stream does not fail the whole review gate.
+          # Pi JSON mode completes with agent_end and a final assistant
+          # stopReason of "stop"; an intermediate toolUse event is not enough.
+          session_is_complete() {
+            jq -e -s '
+              any(.[];
+                .type == "agent_end" and
+                (([.messages[]? | select(.role == "assistant") | .stopReason] | last) == "stop") and
+                ((.willRetry // false) == false)
+              )
+            ' "$RUNNER_TEMP/pi-session.jsonl" >/dev/null 2>&1
+          }
+          session_has_error() {
+            jq -e -s '
+              any(.[];
+                (.stopReason? == "error") or
+                (.message?.stopReason? == "error") or
+                any(.messages[]?; .stopReason? == "error")
+              )
+            ' "$RUNNER_TEMP/pi-session.jsonl" >/dev/null 2>&1
+          }
+
           max_attempts=3
           attempt=1
           while true; do
@@ -173,6 +218,7 @@ jobs:
               --model "${{ inputs.model }}" \
               --api-key "$OPENCODE_GO_API_KEY" \
               --thinking high \
+              --no-context-files \
               -a \
               --tools read,write,grep,find,ls \
               "${SKILL_ARGS[@]}" \
@@ -184,14 +230,20 @@ jobs:
             fi
 
             if [ "$pi_status" -eq 0 ] &&
-              ! grep -q '"stopReason":"error"' "$RUNNER_TEMP/pi-session.jsonl" 2>/dev/null; then
+              session_is_complete &&
+              ! session_has_error; then
               break
             fi
 
             if [ "$attempt" -ge "$max_attempts" ]; then
               echo "::error::pi review failed after $attempt attempts"
+              if ! session_is_complete; then
+                echo "::error::pi session did not emit a completed agent_end event"
+              fi
               cat "$RUNNER_TEMP/pi-stderr.log" >&2 || true
-              grep '"stopReason":"error"' "$RUNNER_TEMP/pi-session.jsonl" | head -1 >&2 || true
+              if session_has_error; then
+                jq -c -s '[.[] | select((.stopReason? == "error") or (.message?.stopReason? == "error") or any(.messages[]?; .stopReason? == "error"))] | .[0]' "$RUNNER_TEMP/pi-session.jsonl" >&2 || true
+              fi
               exit 1
             fi
 

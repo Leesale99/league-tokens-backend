@@ -419,6 +419,10 @@ func BenchmarkContextHandlerHandle(b *testing.B) {
 	rInline := newRecord(2) // 2 record attrs + 3 injected attrs = inline limit.
 	rSpill := newRecord(5)  // 5 record attrs + 3 injected attrs spills to heap.
 
+	decoratedWithService := NewContextHandler(raw, ContextHandlerOptions{ServiceName: "svc"})
+	rServiceInline := newRecord(1) // 1 record attr + 4 injected attrs = inline limit.
+	rServiceSpill := newRecord(2)  // 2 record attrs + 4 injected attrs spills to heap.
+
 	b.Run("raw/empty-ctx", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -447,6 +451,22 @@ func BenchmarkContextHandlerHandle(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			if err := decorated.Handle(ctxFull, rSpill); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("decorated/full-ctx+service/inline", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if err := decoratedWithService.Handle(ctxFull, rServiceInline); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("decorated/full-ctx+service/spill", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if err := decoratedWithService.Handle(ctxFull, rServiceSpill); err != nil {
 				b.Fatal(err)
 			}
 		}

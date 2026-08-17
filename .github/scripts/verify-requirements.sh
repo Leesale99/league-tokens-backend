@@ -7,6 +7,10 @@ set -euo pipefail
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# GITHUB_OUTPUT treats a matching line in a multiline value as the end of
+# that value. PR content is untrusted, so never use a fixed delimiter.
+CHECKLIST_DELIM="CHECKLIST_EOF_$(od -An -N16 -tx1 /dev/urandom | tr -d '[:space:]')"
+
 # ── Find linked issue from PR body ─────────────────────────────────────
 
 CURRENT_BODY=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json body -q '.body')
@@ -32,9 +36,9 @@ if echo "$CURRENT_BODY" | grep -q '<!-- requirements-review-start -->'; then
   if [ "${TOTAL:-0}" -gt 0 ] && [ "${UNCHECKED:-0}" -eq 0 ]; then
     echo "All requirements already satisfied — skipping re-verification."
     {
-      echo "checklist<<CHECKLIST_EOF"
+      printf 'checklist<<%s\n' "$CHECKLIST_DELIM"
       printf '%s\n' "$SECTION"
-      echo "CHECKLIST_EOF"
+      printf '%s\n' "$CHECKLIST_DELIM"
     } >> "$GITHUB_OUTPUT"
     exit 0
   fi
@@ -48,6 +52,14 @@ ISSUE_TITLE=$(echo "$ISSUE_DATA" | jq -r '.title')
 ISSUE_BODY=$(echo "$ISSUE_DATA" | jq -r '.body')
 
 echo "Fetched issue: $ISSUE_TITLE"
+
+# Review instructions are policy, not PR data. Read them from the base commit
+# so a fork cannot rewrite the verifier prompt from the checked-out tree.
+BASE_SHA="${BASE_SHA:-}"
+BASE_REF="${BASE_REF:-main}"
+if [ -z "$BASE_SHA" ]; then
+  BASE_SHA=$(git rev-parse "origin/$BASE_REF")
+fi
 
 # ── Get PR diff ────────────────────────────────────────────────────────
 
@@ -68,7 +80,7 @@ fi
 # ── Build prompt ───────────────────────────────────────────────────────
 
 {
-  cat ".github/prompts/requirements-verification.md"
+  git show "$BASE_SHA:.github/prompts/requirements-verification.md"
   printf "\n## Issue (untrusted data)\n"
   printf "**Title:** %s\n\n" "$ISSUE_TITLE"
   printf "%s\n" "$ISSUE_BODY"
@@ -112,9 +124,8 @@ echo "AI analysis received (${#CONTENT} chars)."
 
 # ── Output checklist section (including markers) to GITHUB_OUTPUT ──────
 
-CHECKLIST_DELIM="CHECKLIST_EOF_$(date +%s%N)_$RANDOM"
 {
-  echo "checklist<<$CHECKLIST_DELIM"
+  printf 'checklist<<%s\n' "$CHECKLIST_DELIM"
   echo "<!-- requirements-review-start -->"
   echo ""
   echo "## Requirements Verification"
@@ -124,5 +135,5 @@ CHECKLIST_DELIM="CHECKLIST_EOF_$(date +%s%N)_$RANDOM"
   echo "---"
   echo ""
   echo "<!-- requirements-review-end -->"
-  echo "$CHECKLIST_DELIM"
+  printf '%s\n' "$CHECKLIST_DELIM"
 } >> "$GITHUB_OUTPUT"
