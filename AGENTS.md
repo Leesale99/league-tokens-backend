@@ -26,4 +26,5 @@ Project memory (decision log, lessons, closed-issue archive) lives in the `leagu
 
 - Library/API questions (any library, even familiar ones): **context7 first** — `resolve-library-id` → `query-docs` (≤3 calls). Do not curl raw source for documentation.
 - General research: `web_search` (2–4 varied queries). Claim verification: `source_check`. Raw `curl`/`fetch_content` only when a pinned source line or exact HTTP body is needed and context7/web_search cannot provide it.
+- `get_search_content`: choose `findText` search or `offset`/`limit` slicing; never combine them.
 - After any non-obvious tool choice, say in one line why — so the norm is self-enforcing and reviewable.
