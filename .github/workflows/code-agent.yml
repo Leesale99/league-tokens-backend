@@ -81,7 +81,7 @@ jobs:
           # github-actions[bot], so it can't spawn a second workflow run.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           provider: oc-sdk-go
-          model: deepseek-v4-flash
+          model: mimo-v2.5
           token: ${{ secrets.OPENCODE_GO_API_KEY }}
           trigger: /code
           # High: deliberation moves into the model's hidden thinking channel
