@@ -214,6 +214,29 @@ func TestContextHandlerWithAttrsFiltered(t *testing.T) {
 		}
 	})
 
+	t.Run("owned keys dropped without context", func(t *testing.T) {
+		buf, logger := captureJSON(ContextHandlerOptions{})
+		logger.With(
+			slog.String(requestIDAttr, "background-request"),
+			slog.Int64(subjectIDAttr, 999),
+			slog.String(traceIDAttr, "background-trace"),
+			slog.String("static", "attr"),
+		).InfoContext(context.Background(), "background line")
+
+		ms := parseLines(t, buf.Bytes())
+		if len(ms) != 1 {
+			t.Fatalf("got %d lines, want 1: %s", len(ms), buf.String())
+		}
+		for _, key := range []string{requestIDAttr, subjectIDAttr, traceIDAttr} {
+			if _, ok := ms[0][key]; ok {
+				t.Errorf("owned key %q emitted without context: %s", key, buf.String())
+			}
+		}
+		if got := ms[0]["static"]; got != "attr" {
+			t.Errorf("non-owned With attr lost: %v", got)
+		}
+	})
+
 	t.Run("service not owned while ServiceName unset", func(t *testing.T) {
 		buf, logger := captureJSON(ContextHandlerOptions{})
 		logger.With(slog.String(serviceAttr, "custom")).InfoContext(context.Background(), "line")
@@ -385,8 +408,16 @@ func BenchmarkContextHandlerHandle(b *testing.B) {
 	raw := NewHandler(slog.LevelDebug, FormatJSON, io.Discard)
 	decorated := NewContextHandler(raw, ContextHandlerOptions{})
 	ctxFull := correlationCtx()
-	r := slog.NewRecord(time.Time{}, slog.LevelInfo, "bench line", 0)
-	r.AddAttrs(slog.String("static", "attr"))
+	newRecord := func(staticAttrs int) slog.Record {
+		r := slog.NewRecord(time.Time{}, slog.LevelInfo, "bench line", 0)
+		for i := 0; i < staticAttrs; i++ {
+			r.AddAttrs(slog.Int("static", i))
+		}
+		return r
+	}
+	r := newRecord(1)
+	rInline := newRecord(2) // 2 record attrs + 3 injected attrs = inline limit.
+	rSpill := newRecord(5)  // 5 record attrs + 3 injected attrs spills to heap.
 
 	b.Run("raw/empty-ctx", func(b *testing.B) {
 		b.ReportAllocs()
@@ -404,10 +435,18 @@ func BenchmarkContextHandlerHandle(b *testing.B) {
 			}
 		}
 	})
-	b.Run("decorated/full-ctx", func(b *testing.B) {
+	b.Run("decorated/full-ctx/inline", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			if err := decorated.Handle(ctxFull, r); err != nil {
+			if err := decorated.Handle(ctxFull, rInline); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("decorated/full-ctx/spill", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if err := decorated.Handle(ctxFull, rSpill); err != nil {
 				b.Fatal(err)
 			}
 		}

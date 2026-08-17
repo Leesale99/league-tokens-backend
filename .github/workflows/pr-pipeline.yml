@@ -24,12 +24,15 @@ jobs:
     if: |
       !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       go: ${{ steps.check.outputs.go }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - id: check
         run: |
           BASE="${{ github.event.pull_request.base.ref || 'main' }}"
@@ -46,6 +49,10 @@ jobs:
     if: |
       !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
     outputs:
       no-issue: ${{ steps.verify.outputs.no-issue }}
       issue-num: ${{ steps.verify.outputs.issue-num }}
@@ -54,6 +61,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - id: verify
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -108,8 +116,14 @@ jobs:
       always() &&
       !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Download review usage artifacts
         if: always()
         continue-on-error: true

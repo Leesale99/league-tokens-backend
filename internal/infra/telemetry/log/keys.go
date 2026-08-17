@@ -1,6 +1,9 @@
 package log
 
-import "context"
+import (
+	"context"
+	"unicode"
+)
 
 // maxCorrelationIDLen bounds request/trace ids at 128 bytes.
 const maxCorrelationIDLen = 128
@@ -15,7 +18,7 @@ func ValidCorrelationID(id string) bool {
 		return false
 	}
 	for _, r := range id {
-		if r < 0x20 || r == 0x7f {
+		if unicode.IsControl(r) {
 			return false
 		}
 	}

@@ -104,6 +104,7 @@ func TestCorrelationIDBounds(t *testing.T) {
 		{"over-long", strings.Repeat("a", maxCorrelationIDLen+1)},
 		{"over-long multi-byte", strings.Repeat("€", maxCorrelationIDLen)}, // 128 runes = 384 bytes
 		{"control char", "req\x1b[31mred\x1b[0m"},
+		{"c1 control char", "req\u009b[7m"},
 		{"del char", "req\x7f"},
 	}
 	sets := []struct {

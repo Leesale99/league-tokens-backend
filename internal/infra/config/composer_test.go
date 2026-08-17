@@ -46,10 +46,15 @@ func createSecrets(t *testing.T, dir string) {
 	writeSecret(t, dir, "provider_api_key", "provider-key-123")
 }
 
-func TestLoad_Valid(t *testing.T) {
-	origDir := secretsDir
+func isolateSecrets(t *testing.T) {
+	t.Helper()
+	original := secretsDir
 	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	t.Cleanup(func() { secretsDir = original })
+}
+
+func TestLoad_Valid(t *testing.T) {
+	isolateSecrets(t)
 
 	setValidEnv(t)
 	createSecrets(t, secretsDir)
@@ -132,9 +137,7 @@ func TestLoad_Valid(t *testing.T) {
 }
 
 func TestLoad_MissingPostgresDatabase(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	setValidEnv(t)
 	// Setting PG_DATABASE to empty triggers env.Parse required-field error
@@ -149,9 +152,7 @@ func TestLoad_MissingPostgresDatabase(t *testing.T) {
 }
 
 func TestLoad_MissingScheduleProviderURL(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	setValidEnv(t)
 	t.Setenv("SCHEDULE_PROVIDER_URL", "")
@@ -164,9 +165,7 @@ func TestLoad_MissingScheduleProviderURL(t *testing.T) {
 }
 
 func TestLoad_MissingSecrets(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	setValidEnv(t)
 
@@ -177,9 +176,7 @@ func TestLoad_MissingSecrets(t *testing.T) {
 }
 
 func TestLoad_InvalidLogLevel(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	setValidEnv(t)
 	t.Setenv("LOG_LEVEL", "invalid")
@@ -192,9 +189,7 @@ func TestLoad_InvalidLogLevel(t *testing.T) {
 }
 
 func TestLoad_InvalidLogFormat(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	setValidEnv(t)
 	t.Setenv("LOG_FORMAT", "pretty")
@@ -210,9 +205,7 @@ func TestLoad_InvalidLogFormat(t *testing.T) {
 }
 
 func TestLoad_ValidJSONFormat(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	setValidEnv(t)
 	t.Setenv("LOG_FORMAT", "json")
@@ -228,9 +221,7 @@ func TestLoad_ValidJSONFormat(t *testing.T) {
 }
 
 func TestLoad_InvalidHTTPAddr(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	setValidEnv(t)
 	t.Setenv("HTTP_LISTEN_ADDR", "not-a-valid-host-port")

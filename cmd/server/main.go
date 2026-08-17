@@ -17,13 +17,8 @@ func main() {
 	cfg := config.MustLoad()
 	level := cfg.Telemetry.LogLevelSlog()
 
-	format, err := log.ParseFormat(cfg.Telemetry.LogFormat)
-	if err != nil {
-		startupLogger.Error("invalid log format",
-			slog.Any("error", err),
-			slog.String("log_format", cfg.Telemetry.LogFormat))
-		os.Exit(1)
-	}
+	// MustLoad validates LOG_FORMAT before returning.
+	format, _ := log.ParseFormat(cfg.Telemetry.LogFormat)
 
 	// The confirmation remains text; log_format reports the final format.
 	startupLogger.Info("config loaded",

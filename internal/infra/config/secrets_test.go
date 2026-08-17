@@ -7,10 +7,8 @@ import (
 )
 
 func TestReadSecret(t *testing.T) {
-	dir := t.TempDir()
-	origDir := secretsDir
-	secretsDir = dir
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
+	dir := secretsDir
 
 	tests := []struct {
 		name    string
@@ -63,9 +61,7 @@ func TestReadSecret(t *testing.T) {
 }
 
 func TestReadSecret_MissingFile(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	_, err := ReadSecret("nonexistent")
 	if err == nil {
@@ -74,9 +70,7 @@ func TestReadSecret_MissingFile(t *testing.T) {
 }
 
 func TestReadSecret_PathTraversal(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	_, err := ReadSecret("/etc/passwd")
 	if err == nil {
@@ -85,9 +79,7 @@ func TestReadSecret_PathTraversal(t *testing.T) {
 }
 
 func TestReadSecret_DotDot(t *testing.T) {
-	origDir := secretsDir
-	secretsDir = t.TempDir()
-	defer func() { secretsDir = origDir }()
+	isolateSecrets(t)
 
 	_, err := ReadSecret("../../etc/passwd")
 	if err == nil {

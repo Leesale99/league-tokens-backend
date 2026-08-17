@@ -34,17 +34,18 @@ type ContextHandlerOptions struct {
 // value first, then TraceIDExtractor), and "service" when ServiceName is
 // set. Values absent from ctx are not emitted; keys the record already
 // carries are not injected again (go1.26 built-in handlers no longer
-// deduplicate keys, so a repeat would emit a duplicate) — WithAttrs drops
-// owned keys re-added via logger.With, even when the ctx field is absent:
-// logger.With must not be used to set correlation values (pass them as
-// per-record attrs or via the ctx seam instead).
+// deduplicate keys, so a repeat would emit a duplicate). Owned keys passed
+// through logger.With are intentionally discarded, even when the ctx field
+// is absent; use WithRequestID, WithSubjectID, or WithTraceID on the context
+// instead. This keeps correlation fields request-scoped and prevents a
+// reusable child logger from carrying stale IDs into another request.
 //
 // Child loggers (With/WithGroup) keep injecting. With an open group the
 // injected attrs nest under it like any record attr — do not use WithGroup
 // if they must stay top-level. A nil ctx never panics. Injection clones
-// the record (handler contract: never mutate in place); for typical records
-// (≤5 attrs) the clone reuses the record's front-attr array, so the
-// decorator adds no allocations — see BenchmarkContextHandlerHandle.
+// the record (handler contract: never mutate in place); the decorator adds
+// no allocations while the record's existing attrs plus injected attrs fit
+// slog.Record's inline storage — see BenchmarkContextHandlerHandle.
 type ContextHandler struct {
 	next slog.Handler
 	opts ContextHandlerOptions
@@ -174,23 +175,18 @@ func recordHasKey(r slog.Record, key string) bool {
 }
 
 // WithAttrs returns a child handler carrying attrs. Owned keys (isOwned)
-// are dropped: the decorator injects them itself (or, for "service" when
-// ServiceName is unset, they pass through), and go1.26 built-ins no longer
-// deduplicate keys.
+// are intentionally dropped, including when the ctx field is absent; use
+// the context setters for correlation values. The "service" attr passes
+// through when ServiceName is unset. Filtering also prevents go1.26 built-in
+// handlers from emitting duplicate owned keys.
 func (c *ContextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	for _, a := range attrs {
-		if !isOwned(a.Key, c.opts) {
-			continue
+	kept := make([]slog.Attr, 0, len(attrs))
+	for _, attr := range attrs {
+		if !isOwned(attr.Key, c.opts) {
+			kept = append(kept, attr)
 		}
-		kept := make([]slog.Attr, 0, len(attrs))
-		for _, b := range attrs {
-			if !isOwned(b.Key, c.opts) {
-				kept = append(kept, b)
-			}
-		}
-		return &ContextHandler{next: c.next.WithAttrs(kept), opts: c.opts}
 	}
-	return &ContextHandler{next: c.next.WithAttrs(attrs), opts: c.opts}
+	return &ContextHandler{next: c.next.WithAttrs(kept), opts: c.opts}
 }
 
 // WithGroup appends the group to the wrapped handler; see the type doc for
