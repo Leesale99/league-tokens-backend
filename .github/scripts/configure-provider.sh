@@ -18,22 +18,8 @@ cat > ~/.pi/agent/models.json << 'MODELS_EOF'
           "reasoning": true,
           "input": ["text"],
           "cost": {"input": 0.20, "output": 1.20, "cacheRead": 0.02, "cacheWrite": 0},
-          "compat": {
-            "supportsStore": false,
-            "supportsDeveloperRole": true,
-            "supportsReasoningEffort": true,
-            "maxTokensField": "max_tokens"
-          },
-          "contextWindow": 1000000,
-          "maxTokens": 384000,
-          "thinkingLevelMap": {
-            "minimal": null,
-            "low": null,
-            "medium": null,
-            "high": "high",
-            "xhigh": "high",
-            "max": "max"
-          }
+          "contextWindow": 1050000,
+          "maxTokens": 128000
         }
       ]
     }
