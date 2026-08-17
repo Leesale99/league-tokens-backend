@@ -145,25 +145,45 @@ jobs:
             fi
           done
 
-          pi --mode json \
-            --provider opencode-go \
-            --model "${{ inputs.model }}" \
-            --api-key "$OPENCODE_GO_API_KEY" \
-            --thinking high \
-            -a \
-            --tools read,bash,edit,write,grep,find,ls \
-            "${SKILL_ARGS[@]}" \
-            "@$RUNNER_TEMP/review-prompt.md" \
-            > "$RUNNER_TEMP/pi-session.jsonl" 2> "$RUNNER_TEMP/pi-stderr.log"
+          # OpenAI-compatible streams can terminate without finish_reason
+          # transiently after a tool call. Retry boundedly with jitter so one
+          # incomplete provider stream does not fail the whole review gate.
+          max_attempts=3
+          attempt=1
+          while true; do
+            rm -f "$RUNNER_TEMP/pi-session.jsonl" "$RUNNER_TEMP/pi-stderr.log"
+            if pi --mode json \
+              --provider opencode-go \
+              --model "${{ inputs.model }}" \
+              --api-key "$OPENCODE_GO_API_KEY" \
+              --thinking high \
+              -a \
+              --tools read,bash,edit,write,grep,find,ls \
+              "${SKILL_ARGS[@]}" \
+              "@$RUNNER_TEMP/review-prompt.md" \
+              > "$RUNNER_TEMP/pi-session.jsonl" 2> "$RUNNER_TEMP/pi-stderr.log"; then
+              pi_status=0
+            else
+              pi_status=$?
+            fi
 
-          # pi exits 0 even when the model call fails (auth/quota/rate limit), so
-          # detect a session error in the event stream and fail the job instead.
-          if grep -q '"stopReason":"error"' "$RUNNER_TEMP/pi-session.jsonl"; then
-            echo "::error::pi session ended with error"
-            cat "$RUNNER_TEMP/pi-stderr.log" >&2 || true
-            grep '"stopReason":"error"' "$RUNNER_TEMP/pi-session.jsonl" | head -1 >&2 || true
-            exit 1
-          fi
+            if [ "$pi_status" -eq 0 ] &&
+              ! grep -q '"stopReason":"error"' "$RUNNER_TEMP/pi-session.jsonl" 2>/dev/null; then
+              break
+            fi
+
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::pi review failed after $attempt attempts"
+              cat "$RUNNER_TEMP/pi-stderr.log" >&2 || true
+              grep '"stopReason":"error"' "$RUNNER_TEMP/pi-session.jsonl" | head -1 >&2 || true
+              exit 1
+            fi
+
+            sleep_seconds=$((15 * attempt + RANDOM % 10))
+            echo "::warning::pi review attempt $attempt failed; retrying in ${sleep_seconds}s"
+            sleep "$sleep_seconds"
+            attempt=$((attempt + 1))
+          done
 
       - name: Aggregate token usage
         id: usage
