@@ -36,6 +36,7 @@ jobs:
   # inputs.job_name is still consumed below (usage summaries / PR body table).
   review:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     # Read-only on purpose: review jobs only read the diff and emit findings
     # as an artifact. All PR writes (comments, body, labels) happen in the
     # report-and-gate job — the single writer, so posting is race-free.
@@ -159,6 +160,8 @@ jobs:
           } > "$RUNNER_TEMP/review-prompt.md"
 
       - name: Configure opencode-go custom provider
+        env:
+          PI_FAIL_FAST: "1"
         run: bash .github/scripts/configure-provider.sh
 
       - name: Install pi
@@ -166,7 +169,7 @@ jobs:
 
       - name: Run pi review
         id: pi
-        timeout-minutes: 20
+        timeout-minutes: 10
         env:
           OPENCODE_GO_API_KEY: ${{ secrets.opencode_api_key }}
         run: |
@@ -185,17 +188,24 @@ jobs:
             fi
           done
 
-          # OpenAI-compatible streams can terminate without finish_reason
-          # transiently after a tool call. Retry boundedly with jitter so one
-          # incomplete provider stream does not fail the whole review gate.
-          # Pi JSON mode completes with agent_end and a final assistant
-          # stopReason of "stop"; an intermediate toolUse event is not enough.
+          # Run once deliberately. A transient provider failure or incomplete
+          # stream is surfaced so GitHub can re-run the failed review job; do
+          # not multiply Pi's automatic retries with a shell retry loop.
+          # Pi JSON mode has used agent_end and run_end lifecycle events
+          # across releases. Accept either only when the final assistant
+          # message reports a clean stop; an intermediate toolUse event is not
+          # enough.
           session_is_complete() {
             jq -e -s '
               any(.[];
-                .type == "agent_end" and
-                (([.messages[]? | select(.role == "assistant") | .stopReason] | last) == "stop") and
-                ((.willRetry // false) == false)
+                (
+                  .type == "agent_end" and
+                  (([.messages[]? | select(.role == "assistant") | .stopReason] | last) == "stop")
+                ) or (
+                  .type == "run_end" and
+                  .outcome == "completed" and
+                  .finalMessage?.stopReason? == "stop"
+                )
               )
             ' "$RUNNER_TEMP/pi-session.jsonl" >/dev/null 2>&1
           }
@@ -204,54 +214,56 @@ jobs:
               any(.[];
                 (.stopReason? == "error") or
                 (.message?.stopReason? == "error") or
-                any(.messages[]?; .stopReason? == "error")
+                any(.messages[]?; .stopReason? == "error") or
+                (.type == "run_end" and (.outcome == "failed" or .outcome == "aborted"))
               )
             ' "$RUNNER_TEMP/pi-session.jsonl" >/dev/null 2>&1
           }
 
-          max_attempts=3
-          attempt=1
-          while true; do
-            rm -f "$RUNNER_TEMP/pi-session.jsonl" "$RUNNER_TEMP/pi-stderr.log"
-            if pi --mode json \
-              --provider opencode-go \
-              --model "${{ inputs.model }}" \
-              --api-key "$OPENCODE_GO_API_KEY" \
-              --thinking high \
-              --no-context-files \
-              -a \
-              --tools read,write,grep,find,ls \
-              "${SKILL_ARGS[@]}" \
-              "@$RUNNER_TEMP/review-prompt.md" \
-              > "$RUNNER_TEMP/pi-session.jsonl" 2> "$RUNNER_TEMP/pi-stderr.log"; then
-              pi_status=0
-            else
-              pi_status=$?
-            fi
+          PI_TIMEOUT_SECONDS=540
+          rm -f "$RUNNER_TEMP/pi-session.jsonl" "$RUNNER_TEMP/pi-stderr.log"
+          if timeout --signal=TERM --kill-after=30s "${PI_TIMEOUT_SECONDS}s" pi --mode json \
+            --provider opencode-go \
+            --model "${{ inputs.model }}" \
+            --api-key "$OPENCODE_GO_API_KEY" \
+            --thinking high \
+            --no-context-files \
+            -a \
+            --tools read,write,grep,find,ls \
+            "${SKILL_ARGS[@]}" \
+            "@$RUNNER_TEMP/review-prompt.md" \
+            > "$RUNNER_TEMP/pi-session.jsonl" 2> "$RUNNER_TEMP/pi-stderr.log"; then
+            pi_status=0
+          else
+            pi_status=$?
+          fi
 
-            if [ "$pi_status" -eq 0 ] &&
-              session_is_complete &&
-              ! session_has_error; then
-              break
-            fi
+          session_complete=0
+          if session_is_complete; then
+            session_complete=1
+          fi
+          session_error=0
+          if session_has_error; then
+            session_error=1
+          fi
 
-            if [ "$attempt" -ge "$max_attempts" ]; then
-              echo "::error::pi review failed after $attempt attempts"
-              if ! session_is_complete; then
-                echo "::error::pi session did not emit a completed agent_end event"
-              fi
-              cat "$RUNNER_TEMP/pi-stderr.log" >&2 || true
-              if session_has_error; then
-                jq -c -s '[.[] | select((.stopReason? == "error") or (.message?.stopReason? == "error") or any(.messages[]?; .stopReason? == "error"))] | .[0]' "$RUNNER_TEMP/pi-session.jsonl" >&2 || true
-              fi
-              exit 1
+          if [ "$pi_status" -ne 0 ] ||
+            [ "$session_complete" -ne 1 ] ||
+            [ "$session_error" -eq 1 ]; then
+            if [ "$pi_status" -eq 124 ]; then
+              echo "::error::pi review timed out after ${PI_TIMEOUT_SECONDS}s"
+            elif [ "$pi_status" -ne 0 ]; then
+              echo "::error::pi review exited with status $pi_status"
             fi
-
-            sleep_seconds=$((15 * attempt + RANDOM % 10))
-            echo "::warning::pi review attempt $attempt failed; retrying in ${sleep_seconds}s"
-            sleep "$sleep_seconds"
-            attempt=$((attempt + 1))
-          done
+            if [ "$session_complete" -ne 1 ]; then
+              echo "::error::pi session did not emit a completed agent_end/run_end event"
+            fi
+            cat "$RUNNER_TEMP/pi-stderr.log" >&2 || true
+            if [ "$session_error" -eq 1 ]; then
+              jq -c -s '[.[] | select((.stopReason? == "error") or (.message?.stopReason? == "error") or any(.messages[]?; .stopReason? == "error") or (.type == "run_end" and (.outcome == "failed" or .outcome == "aborted")))] | .[0]' "$RUNNER_TEMP/pi-session.jsonl" >&2 || true
+            fi
+            exit 1
+          fi
 
       - name: Aggregate token usage
         id: usage
@@ -290,6 +302,17 @@ jobs:
         with:
           name: review-usage-${{ inputs.focus }}
           path: ${{ runner.temp }}/review-usage.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload pi diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-diagnostics-${{ inputs.focus }}
+          path: |
+            ${{ runner.temp }}/pi-session.jsonl
+            ${{ runner.temp }}/pi-stderr.log
           if-no-files-found: ignore
           retention-days: 1
 

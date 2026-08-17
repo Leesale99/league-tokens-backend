@@ -44,11 +44,38 @@ MODELS_EOF
 
 # Default thinking level for all pi invocations unless a job overrides it
 # explicitly (review.yml passes --thinking high; the code-agent action passes
-# thinking_level: high). Kept merge-safe so we never clobber a runner's
-# existing global settings.
-if [ -f ~/.pi/agent/settings.json ]; then
-  jq '.defaultThinkingLevel = "high"' ~/.pi/agent/settings.json > ~/.pi/agent/settings.json.tmp && \
-    mv ~/.pi/agent/settings.json.tmp ~/.pi/agent/settings.json
+# thinking_level: high). Set PI_FAIL_FAST=1 for jobs that want GitHub Actions
+# to be the retry boundary. The provider timeout matches review.yml's shell
+# deadline; the shell timeout remains the final enforcement point if a provider
+# ignores its own setting.
+SETTINGS_PATH=~/.pi/agent/settings.json
+if [ "${PI_FAIL_FAST:-0}" = "1" ]; then
+  SETTINGS_FILTER='
+    .defaultThinkingLevel = "high" |
+    .retry.enabled = false |
+    .retry.maxRetries = 0 |
+    .retry.provider.maxRetries = 0 |
+    .retry.provider.timeoutMs = 540000
+  '
+  DEFAULT_SETTINGS='{
+  "defaultThinkingLevel": "high",
+  "retry": {
+    "enabled": false,
+    "maxRetries": 0,
+    "provider": {
+      "maxRetries": 0,
+      "timeoutMs": 540000
+    }
+  }
+}'
 else
-  echo '{"defaultThinkingLevel": "high"}' > ~/.pi/agent/settings.json
+  SETTINGS_FILTER='.defaultThinkingLevel = "high"'
+  DEFAULT_SETTINGS='{"defaultThinkingLevel": "high"}'
+fi
+
+if [ -f "$SETTINGS_PATH" ]; then
+  jq "$SETTINGS_FILTER" "$SETTINGS_PATH" > "${SETTINGS_PATH}.tmp" && \
+    mv "${SETTINGS_PATH}.tmp" "$SETTINGS_PATH"
+else
+  printf '%s\n' "$DEFAULT_SETTINGS" > "$SETTINGS_PATH"
 fi
