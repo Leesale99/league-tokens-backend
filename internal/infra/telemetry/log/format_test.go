@@ -3,6 +3,7 @@ package log
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -89,6 +90,19 @@ func TestNewHandlerLevelFiltering(t *testing.T) {
 	if buf.Len() == 0 {
 		t.Error("info record not emitted at info level")
 	}
+}
+
+// TestNewHandlerUnknownFormat asserts an invalid Format value fails fast at
+// construction instead of silently degrading to text: ParseFormat and
+// TelemetryConfig.Validate already reject unknown strings, so an unknown
+// Format here is unrecoverable init-time corruption.
+func TestNewHandlerUnknownFormat(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("NewHandler with an invalid Format did not panic")
+		}
+	}()
+	NewHandler(slog.LevelInfo, Format(42), io.Discard)
 }
 
 func TestOp(t *testing.T) {

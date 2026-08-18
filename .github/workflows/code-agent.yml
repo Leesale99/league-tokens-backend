@@ -17,6 +17,9 @@ jobs:
     if: |
       !endsWith(github.actor, '[bot]') &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) && (
+        github.event_name == 'pull_request_review_comment' ||
+        github.event.issue.pull_request != null
+      ) && (
         contains(github.event.comment.body, ' /code') ||
         startsWith(github.event.comment.body, '/code')
       )
@@ -34,6 +37,50 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+
+      # Preflight before anything that could touch the provider secret (the
+      # action step below is the only consumer of OPENCODE_GO_API_KEY). This
+      # step has GH_TOKEN only; the provider key is deliberately NOT set on
+      # its environment.
+      - name: Validate PR source
+        id: validate-source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # /code must run only against pull requests from this repository.
+          # issue_comment fires for both issue and PR comments, so the
+          # payload must prove the comment sits on a PR;
+          # pull_request_review_comment events are always PR-scoped.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request_review_comment" ]; then
+            PR_NUMBER=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")
+          else
+            PR_NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
+            if [ "$(jq -r '.issue.pull_request != null' "$GITHUB_EVENT_PATH")" != "true" ]; then
+              echo "::error::/code is only supported on pull request comments, not issue comments."
+              exit 1
+            fi
+          fi
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not determine pull request number from event payload."
+            exit 1
+          fi
+
+          # Reject fork PRs before the provider-token step: the agent runs
+          # with a credential plus write permissions and automatically
+          # trusts project resources (AGENTS.md, .pi settings, extensions,
+          # skills). issue_comment carries PR info only indirectly, so look
+          # the PR up via the API instead of trusting a stub in the event
+          # payload.
+          PR_JSON=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
+          HEAD_REPO=$(echo "$PR_JSON" | jq -r '.head.repo.full_name // empty')
+          if [ "${HEAD_REPO,,}" != "${GITHUB_REPOSITORY,,}" ]; then
+            echo "::error::/code is disabled for pull requests from forks (head repo: ${HEAD_REPO:-unknown})."
+            exit 1
+          fi
+
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Configure opencode-go custom provider
         run: bash .github/scripts/configure-provider.sh
@@ -86,7 +133,9 @@ jobs:
 
       - name: Run Code Agent
         id: pi
-        uses: shaftoe/pi-coding-agent-action@v2
+        # Immutable release v2.27.0 (full SHA). Floating major tags are
+        # mutable and would let a compromised tag redirect the agent.
+        uses: shaftoe/pi-coding-agent-action@0698813906fb1f23425bd742510e3080d624840d
         with:
           # GITHUB_TOKEN (not a PAT): the agent's reply comment is posted as
           # github-actions[bot], so it can't spawn a second workflow run.
@@ -104,12 +153,14 @@ jobs:
           thinking_level: high
           auto_compaction: true
           export_session_jsonl: true
+          # Minimum tool set for the target-file edit/update flow only. The
+          # agent process holds the provider credential, so its surface area
+          # stays minimal; deliberately no bash.
           loaded_tools: |
             read
             write
             edit
             grep
-            bash
             update_pull_request
           prompt: |
             You were triggered by a `/code` command.
@@ -125,7 +176,7 @@ jobs:
             ## What to do
 
             1. The task concerns ONLY the file and lines in Target anchor. Do NOT explore other files, the PR thread, or repository history.
-            2. Make the change with `read`/`write`/`edit`/`grep`. Use `bash` only as a last resort when other tools aren't enough.
+            2. Make the change with `read`/`write`/`edit`/`grep`.
             3. Push via `update_pull_request`.
             4. Reply with a 1-line summary.
 

@@ -12,8 +12,8 @@ func main() {
 	// Startup sequence: install a text/INFO fallback for config diagnostics,
 	// load config, emit a format-aware confirmation, then install the
 	// configured application logger.
-	startupLogger := slog.New(log.NewHandler(slog.LevelInfo, log.FormatText, os.Stdout))
-	slog.SetDefault(startupLogger)
+	fallbackLogger := slog.New(log.NewHandler(slog.LevelInfo, log.FormatText, os.Stdout))
+	slog.SetDefault(fallbackLogger)
 
 	cfg := config.MustLoad()
 	level := cfg.Telemetry.LogLevelSlog()
@@ -22,7 +22,7 @@ func main() {
 	// local so future drift cannot silently fall back to text logging.
 	format, err := log.ParseFormat(cfg.Telemetry.LogFormat)
 	if err != nil {
-		startupLogger.Error("invalid log format", slog.Any("error", err))
+		fallbackLogger.Error("invalid log format", slog.Any("error", err))
 		os.Exit(1)
 	}
 

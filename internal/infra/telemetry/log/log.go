@@ -5,21 +5,25 @@
 //
 // # Field ownership
 //
-// The six names code, op, service, subject_id, trace_id, request_id are
-// owned by this package — call sites must not re-add them as attrs.
-// request_id, subject_id, and trace_id are injected from ctx by
+// request_id, subject_id, trace_id, and service are the decorator-owned
+// names: request_id, subject_id, and trace_id are injected from ctx by
 // ContextHandler; service is injected by ContextHandler when ServiceName is
-// set (SERVICE_NAME); code and op are call-site attrs via Code()/Op()
-// (per-line semantics — not auto-injectable), drawn from the ADR-0011 table
-// until the error-model issue ships apperr/codes.go. The decorator deliberately
-// drops owned keys re-added via logger.With (ContextHandler.WithAttrs), even
-// when the ctx field is absent; use WithRequestID, WithSubjectID, or
-// WithTraceID on the context instead, including for background jobs. For
-// owned fields, record-level attrs win over ctx; non-owned duplicate keys
-// remain the call site's responsibility. Prefer typed slog.Attr arguments
-// (enforced by sloglint attr-only). The slog built-ins time, level, msg,
-// source are reserved — go1.26 no longer filters collisions, so a duplicate
-// key would be emitted.
+// set (SERVICE_NAME). Call sites must not re-add them as logger attrs — the
+// decorator deliberately drops owned keys re-added via logger.With
+// (ContextHandler.WithAttrs), even when the ctx field is absent; use
+// WithRequestID, WithSubjectID, or WithTraceID on the context instead,
+// including for background jobs.
+//
+// code and op are NOT decorator-owned: they are per-line call-site attrs
+// supplied via Code()/Op() on every record (per-line semantics — not
+// auto-injectable, and not filtered by WithAttrs), drawn from the ADR-0011
+// table until the error-model issue ships apperr/codes.go.
+//
+// For owned fields, record-level attrs win over ctx; non-owned duplicate
+// keys remain the call site's responsibility. Prefer typed slog.Attr
+// arguments (enforced by sloglint attr-only). The slog built-ins time,
+// level, msg, source are reserved — go1.26 no longer filters collisions, so
+// a duplicate key would be emitted.
 //
 // # op convention
 //

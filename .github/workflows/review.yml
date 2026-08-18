@@ -181,6 +181,10 @@ jobs:
           SKILL_ARGS=()
           IFS=',' read -ra REQUESTED_SKILLS <<< "${{ inputs.skills }}"
           for SKILL in "${REQUESTED_SKILLS[@]}"; do
+            # A malformed comma-separated input (e.g. a trailing comma)
+            # yields an empty item; skip it instead of warning on a
+            # missing skill.
+            [ -n "$SKILL" ] || continue
             if [ -d ".pi/skills/$SKILL" ]; then
               SKILL_ARGS+=(--skill ".pi/skills/$SKILL")
             else

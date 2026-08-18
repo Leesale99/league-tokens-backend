@@ -144,6 +144,35 @@ func TestCorrelationIDBounds(t *testing.T) {
 	}
 }
 
+// TestNilContextSafety pins the nil-ctx contract: every setter/getter
+// treats a nil ctx as context.Background(), so middleware chains over a
+// possibly-nil ctx never panic (the decorator is already nil-safe).
+func TestNilContextSafety(t *testing.T) {
+	ctx := WithRequestID(WithSubjectID(WithTraceID(nil, "trace-1"), 42), "req-1")
+	if ctx == nil {
+		t.Fatal("setter chain returned a nil context for nil input")
+	}
+	if id, ok := RequestID(ctx); !ok || id != "req-1" {
+		t.Errorf("RequestID() after nil chain = %q, %v; want %q, true", id, ok, "req-1")
+	}
+	if id, ok := SubjectID(ctx); !ok || id != 42 {
+		t.Errorf("SubjectID() after nil chain = %d, %v; want 42, true", id, ok)
+	}
+	if id, ok := TraceID(ctx); !ok || id != "trace-1" {
+		t.Errorf("TraceID() after nil chain = %q, %v; want %q, true", id, ok, "trace-1")
+	}
+
+	if _, ok := RequestID(nil); ok {
+		t.Error("RequestID(nil) ok = true, want false")
+	}
+	if _, ok := SubjectID(nil); ok {
+		t.Error("SubjectID(nil) ok = true, want false")
+	}
+	if _, ok := TraceID(nil); ok {
+		t.Error("TraceID(nil) ok = true, want false")
+	}
+}
+
 // TestKeysAreIndependent guards the distinct-key-type design: setting one
 // field must never make another field readable, and values must survive
 // context nesting.

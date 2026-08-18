@@ -74,8 +74,14 @@ else
 fi
 
 if [ -f "$SETTINGS_PATH" ]; then
-  jq "$SETTINGS_FILTER" "$SETTINGS_PATH" > "${SETTINGS_PATH}.tmp" && \
-    mv "${SETTINGS_PATH}.tmp" "$SETTINGS_PATH"
+  # Fail loudly on a corrupt existing settings file: without the explicit
+  # check, jq would leave a stale .tmp and the old settings in place.
+  if ! jq "$SETTINGS_FILTER" "$SETTINGS_PATH" > "${SETTINGS_PATH}.tmp"; then
+    rm -f "${SETTINGS_PATH}.tmp"
+    echo "::error::cannot parse $SETTINGS_PATH"
+    exit 1
+  fi
+  mv "${SETTINGS_PATH}.tmp" "$SETTINGS_PATH"
 else
   printf '%s\n' "$DEFAULT_SETTINGS" > "$SETTINGS_PATH"
 fi

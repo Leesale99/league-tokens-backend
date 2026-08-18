@@ -31,14 +31,21 @@ func ParseFormat(s string) (Format, error) {
 }
 
 // NewHandler builds the app's slog handler on out at the given level — the
-// single choke point for format/stream (ADR-0006). Unknown formats fall
-// back to text; never returns nil.
+// single choke point for format/stream (ADR-0006). An unknown Format is
+// unrecoverable init-time configuration corruption and panics instead of
+// silently degrading to text; ParseFormat and TelemetryConfig.Validate
+// already reject unknown strings, so only a programming error can reach
+// this branch. Never returns nil.
 func NewHandler(level slog.Level, format Format, out io.Writer) slog.Handler {
 	opts := &slog.HandlerOptions{Level: level}
-	if format == FormatJSON {
+	switch format {
+	case FormatText:
+		return slog.NewTextHandler(out, opts)
+	case FormatJSON:
 		return slog.NewJSONHandler(out, opts)
+	default:
+		panic(fmt.Sprintf("telemetry/log: unknown Format %v", format))
 	}
-	return slog.NewTextHandler(out, opts)
 }
 
 // New returns a logger built on NewHandler.
