@@ -147,6 +147,8 @@ func TestCorrelationIDBounds(t *testing.T) {
 // TestNilContextSafety pins the nil-ctx contract: every setter/getter
 // treats a nil ctx as context.Background(), so middleware chains over a
 // possibly-nil ctx never panic (the decorator is already nil-safe).
+//
+//nolint:staticcheck // SA1012: nil contexts here are the contract under test, not accidental.
 func TestNilContextSafety(t *testing.T) {
 	ctx := WithRequestID(WithSubjectID(WithTraceID(nil, "trace-1"), 42), "req-1")
 	if ctx == nil {
