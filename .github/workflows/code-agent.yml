@@ -136,6 +136,10 @@ jobs:
         # Immutable release v2.27.0 (full SHA). Floating major tags are
         # mutable and would let a compromised tag redirect the agent.
         uses: shaftoe/pi-coding-agent-action@0698813906fb1f23425bd742510e3080d624840d
+        env:
+          # Matches models.json's "apiKey": "$OPENCODE_GO_API_KEY" interp.
+          # The secret reaches this step only, after Validate PR source.
+          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
         with:
           # GITHUB_TOKEN (not a PAT): the agent's reply comment is posted as
           # github-actions[bot], so it can't spawn a second workflow run.

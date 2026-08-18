@@ -4,6 +4,8 @@
 # Individual workflows select the model at runtime via the `model` input.
 set -euo pipefail
 
+# The provider key is interpolated by pi from the OPENCODE_GO_API_KEY env
+# var at request time (models.json env references); secrets never reach argv.
 mkdir -p ~/.pi/agent
 cat > ~/.pi/agent/models.json << 'MODELS_EOF'
 {
@@ -11,6 +13,7 @@ cat > ~/.pi/agent/models.json << 'MODELS_EOF'
     "opencode-go": {
       "baseUrl": "https://opencode.ai/zen/go/v1",
       "api": "openai-completions",
+      "apiKey": "$OPENCODE_GO_API_KEY",
       "models": [
         {
           "id": "deepseek-v4-flash",
