@@ -17,7 +17,7 @@ const (
 
 // ContextHandlerOptions configures the context-decorating handler.
 type ContextHandlerOptions struct {
-	// ServiceName, when non-empty and valid according to ValidCorrelationID,
+	// ServiceName, when non-empty and valid according to ValidLogString,
 	// is injected as a "service" attr on every record the handler emits.
 	// NewContextHandler rejects invalid values.
 	ServiceName string
@@ -33,8 +33,8 @@ type ContextHandlerOptions struct {
 // request_id and subject_id (set by the #8/#11 middlewares), trace_id (ctx
 // value first, then TraceIDExtractor), and "service" when ServiceName is
 // set. Values absent from ctx are not emitted; keys the record already
-// carries are not injected again (go1.26 built-in handlers no longer
-// deduplicate keys, so a repeat would emit a duplicate). Owned keys passed
+// carries are not injected again — built-in handlers emit duplicate keys
+// verbatim, so a repeat would emit a duplicate. Owned keys passed
 // through logger.With are intentionally discarded, even when the ctx field
 // is absent; use WithRequestID, WithSubjectID, or WithTraceID on the context
 // instead. This keeps correlation fields request-scoped and prevents a
@@ -49,18 +49,22 @@ type ContextHandlerOptions struct {
 type ContextHandler struct {
 	next slog.Handler
 	opts ContextHandlerOptions
+	// serviceOwned caches whether ServiceName is set and valid, computed
+	// once at construction so Handle/WithAttrs do not re-scan it per record.
+	serviceOwned bool
 }
 
 // isOwned reports whether key is owned by the decorator: injected (and
 // dropped from logger.With) whenever the ctx provides it, or — for
-// "service" — whenever ServiceName is set and valid. Handle and WithAttrs
+// "service" — whenever ServiceName is set and valid. The service outcome is
+// precomputed once at construction (serviceOwned). Handle and WithAttrs
 // both use this predicate so their ownership policy stays consistent.
-func isOwned(key string, opts ContextHandlerOptions) bool {
+func isOwned(key string, serviceOwned bool) bool {
 	switch key {
 	case requestIDAttr, subjectIDAttr, traceIDAttr:
 		return true
 	case serviceAttr:
-		return opts.ServiceName != "" && ValidCorrelationID(opts.ServiceName)
+		return serviceOwned
 	}
 	return false
 }
@@ -74,10 +78,14 @@ func NewContextHandler(h slog.Handler, opts ContextHandlerOptions) *ContextHandl
 	if isNilHandler(h) {
 		panic("telemetry/log: NewContextHandler requires a non-nil handler")
 	}
-	if opts.ServiceName != "" && !ValidCorrelationID(opts.ServiceName) {
+	if opts.ServiceName != "" && !ValidLogString(opts.ServiceName) {
 		panic("telemetry/log: ContextHandlerOptions.ServiceName must be at most 128 bytes and contain no control characters when non-empty")
 	}
-	return &ContextHandler{next: h, opts: opts}
+	return &ContextHandler{
+		next:         h,
+		opts:         opts,
+		serviceOwned: opts.ServiceName != "" && ValidLogString(opts.ServiceName),
+	}
 }
 
 // isNilHandler detects both a nil interface and an interface containing a
@@ -112,26 +120,26 @@ func (c *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 
 	// Inject present values unless the record already carries the key —
-	// go1.26 built-in handlers no longer deduplicate, so a repeat would
-	// emit a duplicate key.
+	// built-in handlers emit duplicate keys verbatim, so a repeat would
+	// emit a duplicate.
 	var attrs [4]slog.Attr
 	inject := attrs[:0]
-	if isOwned(requestIDAttr, c.opts) {
-		if id, ok := RequestID(ctx); ok && ValidCorrelationID(id) && !recordHasKey(r, requestIDAttr) {
+	if isOwned(requestIDAttr, c.serviceOwned) {
+		if id, ok := RequestID(ctx); ok && ValidLogString(id) && !recordHasKey(r, requestIDAttr) {
 			inject = append(inject, slog.String(requestIDAttr, id))
 		}
 	}
-	if isOwned(subjectIDAttr, c.opts) {
+	if isOwned(subjectIDAttr, c.serviceOwned) {
 		if id, ok := SubjectID(ctx); ok && !recordHasKey(r, subjectIDAttr) {
 			inject = append(inject, slog.Int64(subjectIDAttr, id))
 		}
 	}
-	if isOwned(traceIDAttr, c.opts) {
+	if isOwned(traceIDAttr, c.serviceOwned) {
 		if id, ok := c.traceID(ctx); ok && !recordHasKey(r, traceIDAttr) {
 			inject = append(inject, slog.String(traceIDAttr, id))
 		}
 	}
-	if isOwned(serviceAttr, c.opts) && !recordHasKey(r, serviceAttr) {
+	if isOwned(serviceAttr, c.serviceOwned) && !recordHasKey(r, serviceAttr) {
 		inject = append(inject, slog.String(serviceAttr, c.opts.ServiceName))
 	}
 
@@ -148,13 +156,13 @@ func (c *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 // traceID returns the trace id to inject: the ctx value first, then the
 // extractor output; both must pass the correlation bounds.
 func (c *ContextHandler) traceID(ctx context.Context) (string, bool) {
-	if id, ok := TraceID(ctx); ok && ValidCorrelationID(id) {
+	if id, ok := TraceID(ctx); ok && ValidLogString(id) {
 		return id, true
 	}
 	if c.opts.TraceIDExtractor == nil {
 		return "", false
 	}
-	if id := c.opts.TraceIDExtractor(ctx); ValidCorrelationID(id) {
+	if id := c.opts.TraceIDExtractor(ctx); ValidLogString(id) {
 		return id, true
 	}
 	return "", false
@@ -177,20 +185,31 @@ func recordHasKey(r slog.Record, key string) bool {
 // WithAttrs returns a child handler carrying attrs. Owned keys (isOwned)
 // are intentionally dropped, including when the ctx field is absent; use
 // the context setters for correlation values. The "service" attr passes
-// through when ServiceName is unset. Filtering also prevents go1.26 built-in
-// handlers from emitting duplicate owned keys.
+// through when ServiceName is unset. Filtering also prevents built-in
+// handlers from emitting duplicate owned keys. When no owned key is present
+// the attrs are forwarded untouched (no filtering allocation).
 func (c *ContextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	needsFilter := false
+	for _, attr := range attrs {
+		if isOwned(attr.Key, c.serviceOwned) {
+			needsFilter = true
+			break
+		}
+	}
+	if !needsFilter {
+		return &ContextHandler{next: c.next.WithAttrs(attrs), opts: c.opts, serviceOwned: c.serviceOwned}
+	}
 	kept := make([]slog.Attr, 0, len(attrs))
 	for _, attr := range attrs {
-		if !isOwned(attr.Key, c.opts) {
+		if !isOwned(attr.Key, c.serviceOwned) {
 			kept = append(kept, attr)
 		}
 	}
-	return &ContextHandler{next: c.next.WithAttrs(kept), opts: c.opts}
+	return &ContextHandler{next: c.next.WithAttrs(kept), opts: c.opts, serviceOwned: c.serviceOwned}
 }
 
 // WithGroup appends the group to the wrapped handler; see the type doc for
 // how an open group nests the injected attrs.
 func (c *ContextHandler) WithGroup(name string) slog.Handler {
-	return &ContextHandler{next: c.next.WithGroup(name), opts: c.opts}
+	return &ContextHandler{next: c.next.WithGroup(name), opts: c.opts, serviceOwned: c.serviceOwned}
 }

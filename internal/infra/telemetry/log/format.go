@@ -52,3 +52,13 @@ func NewHandler(level slog.Level, format Format, out io.Writer) slog.Handler {
 func New(level slog.Level, format Format, out io.Writer) *slog.Logger {
 	return slog.New(NewHandler(level, format, out))
 }
+
+// NewConfigured returns the application logger: a Format-aware handler
+// (NewHandler) wrapped in the correlation decorator (NewContextHandler) for
+// serviceName. This is the exact chain cmd/server wires at boot; keeping it
+// as one function makes the boot path unit-testable. Config Validate() must
+// already have rejected an invalid format, and an invalid non-empty
+// serviceName fails fast here exactly as NewContextHandler documents.
+func NewConfigured(level slog.Level, format Format, serviceName string, out io.Writer) *slog.Logger {
+	return slog.New(NewContextHandler(NewHandler(level, format, out), ContextHandlerOptions{ServiceName: serviceName}))
+}

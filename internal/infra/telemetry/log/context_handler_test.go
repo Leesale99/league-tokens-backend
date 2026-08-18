@@ -152,8 +152,9 @@ func TestContextHandlerTraceKeyWinsOverExtractor(t *testing.T) {
 }
 
 // TestContextHandlerDuplicateKeyGuard asserts a record that already carries
-// an owned key keeps its own value and is not duplicated (go1.26 built-ins
-// no longer deduplicate keys), while the other fields still inject.
+// an owned key keeps its own value and is not duplicated — built-in
+// handlers emit duplicate keys verbatim — while the other fields still
+// inject.
 func TestContextHandlerDuplicateKeyGuard(t *testing.T) {
 	buf, logger := captureJSON(ContextHandlerOptions{})
 	logger.InfoContext(correlationCtx(), "line", slog.String(requestIDAttr, "preset"))
@@ -249,7 +250,7 @@ func TestContextHandlerWithAttrsFiltered(t *testing.T) {
 }
 
 // TestContextHandlerChildLoggers asserts With/WithGroup children keep
-// injecting. With go1.26 handlers, record attrs (including injected ones)
+// injecting. With built-in handlers, record attrs (including injected ones)
 // nest under open groups, so the grouped line is asserted
 // location-agnostically.
 func TestContextHandlerChildLoggers(t *testing.T) {
@@ -468,6 +469,33 @@ func BenchmarkContextHandlerHandle(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			if err := decoratedWithService.Handle(ctxFull, rServiceSpill); err != nil {
 				b.Fatal(err)
+			}
+		}
+	})
+}
+
+// BenchmarkContextHandlerWithAttrs pins the WithAttrs allocation behavior:
+// forwarding attrs untouched when no owned key is present must not allocate
+// the filter slice (finding: pre-scan before make).
+func BenchmarkContextHandlerWithAttrs(b *testing.B) {
+	decorated := NewContextHandler(NewHandler(slog.LevelDebug, FormatJSON, io.Discard), ContextHandlerOptions{ServiceName: "svc"})
+
+	freeAttrs := []slog.Attr{slog.String("static", "attr"), slog.Int("n", 1)}
+	ownedAttrs := []slog.Attr{slog.String("static", "attr"), slog.String(requestIDAttr, "req-1")}
+
+	b.Run("no-owned-keys", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if h := decorated.WithAttrs(freeAttrs); h == nil {
+				b.Fatal("nil handler")
+			}
+		}
+	})
+	b.Run("owned-key-filtered", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if h := decorated.WithAttrs(ownedAttrs); h == nil {
+				b.Fatal("nil handler")
 			}
 		}
 	})

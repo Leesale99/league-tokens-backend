@@ -34,12 +34,7 @@ func main() {
 		slog.String("log_level", level.String()),
 		slog.String("log_format", cfg.Telemetry.LogFormat))
 
-	options := log.ContextHandlerOptions{ServiceName: cfg.Telemetry.ServiceName}
-
-	applicationLogger := slog.New(log.NewContextHandler(
-		log.NewHandler(level, format, os.Stdout),
-		options,
-	))
+	applicationLogger := log.NewConfigured(level, format, cfg.Telemetry.ServiceName, os.Stdout)
 	slog.SetDefault(applicationLogger)
 	// TODO(#42): init the OTLP exporter from cfg.Telemetry; until then
 	// OTLP_ENDPOINT/otlp_token are validated but unused.

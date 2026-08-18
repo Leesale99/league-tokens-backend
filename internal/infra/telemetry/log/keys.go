@@ -8,16 +8,18 @@ import (
 // maxCorrelationIDLen bounds request/trace ids at 128 bytes.
 const maxCorrelationIDLen = 128
 
-// ValidCorrelationID reports whether id may carry correlation: non-empty
-// (empty-string = absent), ≤ maxCorrelationIDLen bytes, no control chars
-// (terminal-escape safety for dev text logs). Shared by the setters, the
-// decorator's injection path, and TelemetryConfig.Validate (SERVICE_NAME),
-// so a hostile value is never stored, emitted, nor accepted at boot.
-func ValidCorrelationID(id string) bool {
-	if id == "" || len(id) > maxCorrelationIDLen {
+// ValidLogString reports whether s is safe to emit as a log attr value:
+// non-empty (empty-string = absent), ≤ maxCorrelationIDLen bytes, no control
+// chars (terminal-escape safety for dev text logs). Shared by the
+// correlation-id setters, the decorator's injection path, and
+// TelemetryConfig.Validate (SERVICE_NAME), so a hostile value is never
+// stored, emitted, nor accepted at boot. Named for the general case —
+// service names carry the same bounds as correlation ids (ADR-0011).
+func ValidLogString(s string) bool {
+	if s == "" || len(s) > maxCorrelationIDLen {
 		return false
 	}
-	for _, r := range id {
+	for _, r := range s {
 		if unicode.IsControl(r) {
 			return false
 		}
@@ -47,7 +49,7 @@ func normalizeContext(ctx context.Context) context.Context {
 // A nil ctx is treated as context.Background().
 func WithRequestID(ctx context.Context, id string) context.Context {
 	ctx = normalizeContext(ctx)
-	if !ValidCorrelationID(id) {
+	if !ValidLogString(id) {
 		return ctx
 	}
 	return context.WithValue(ctx, requestIDKey{}, id)
@@ -80,7 +82,7 @@ func SubjectID(ctx context.Context) (int64, bool) {
 // is treated as context.Background().
 func WithTraceID(ctx context.Context, id string) context.Context {
 	ctx = normalizeContext(ctx)
-	if !ValidCorrelationID(id) {
+	if !ValidLogString(id) {
 		return ctx
 	}
 	return context.WithValue(ctx, traceIDKey{}, id)

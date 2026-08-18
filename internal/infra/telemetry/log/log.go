@@ -22,8 +22,8 @@
 // For owned fields, record-level attrs win over ctx; non-owned duplicate
 // keys remain the call site's responsibility. Prefer typed slog.Attr
 // arguments (enforced by sloglint attr-only). The slog built-ins time,
-// level, msg, source are reserved — go1.26 no longer filters collisions, so
-// a duplicate key would be emitted.
+// level, msg, source are reserved — built-in handlers emit duplicate keys
+// verbatim, so a duplicate would be emitted as-is.
 //
 // # op convention
 //
