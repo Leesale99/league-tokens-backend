@@ -226,11 +226,11 @@ jobs:
 
           PI_TIMEOUT_SECONDS=540
           rm -f "$RUNNER_TEMP/pi-session.jsonl" "$RUNNER_TEMP/pi-stderr.log"
+          # Provider secret comes from the OPENCODE_GO_API_KEY step env var;
+          # never pass it on argv where it is readable via ps or /proc.
           if timeout --signal=TERM --kill-after=30s "${PI_TIMEOUT_SECONDS}s" pi --mode json \
             --provider opencode-go \
             --model "${{ inputs.model }}" \
-            # Provider secret comes from the OPENCODE_GO_API_KEY step env var;
-            # never pass it on argv where it is readable via ps or /proc.
             --thinking high \
             --no-context-files \
             -a \
