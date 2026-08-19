@@ -84,7 +84,7 @@ func NewContextHandler(h slog.Handler, opts ContextHandlerOptions) *ContextHandl
 	return &ContextHandler{
 		next:         h,
 		opts:         opts,
-		serviceOwned: opts.ServiceName != "" && ValidLogString(opts.ServiceName),
+		serviceOwned: opts.ServiceName != "",
 	}
 }
 
